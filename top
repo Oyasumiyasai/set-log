@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自動Vlog動画編集システム - Setlog Style</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap');
+        
+        body {
+            font-family: 'Zen Kaku Gothic New', 'Plus Jakarta Sans', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f43f5e 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-pink-500 selection:text-white">
+
+    <!-- Header -->
+    <header class="border-b border-slate-800 glass-panel sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-pink-500/20">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-black tracking-tight flex items-center gap-2">
+                        <span>SetLog AutoVlog</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-400 border border-pink-500/30">PoC System</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">複数動画を自動トリミング＆時系列結合する自動編集エンジン</p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center gap-4 text-xs text-slate-400">
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-shield-halved text-emerald-400"></i> ブラウザ完全ローカル処理</span>
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-bolt text-amber-400"></i> 即時自動カット</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-6 w-full flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: Controls & Clip List (5 cols) -->
+        <section class="lg:col-span-5 flex flex-col gap-5">
+            
+            <!-- Upload Box -->
+            <div class="glass-panel rounded-3xl p-5 relative overflow-hidden group border-dashed border-2 border-slate-700 hover:border-pink-500/50 transition-all duration-300">
+                <input type="file" id="videoInput" multiple accept="video/*" class="absolute inset-0 opacity-0 cursor-pointer z-10">
+                <div class="text-center py-6 flex flex-col items-center justify-center pointer-events-none">
+                    <div class="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-pink-400 text-2xl mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                    </div>
+                    <h3 class="font-bold text-slate-200">動画ファイルをドラッグ＆ドロップ</h3>
+                    <p class="text-xs text-slate-400 mt-1">またはタップして動画を選択（複数選択可）</p>
+                    <span class="mt-3 text-[10px] font-medium px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 border border-slate-700">MP4, MOV, WebM に対応</span>
+                </div>
+            </div>
+
+            <!-- Editing Settings -->
+            <div class="glass-panel rounded-3xl p-5 space-y-4">
+                <h2 class="text-sm font-bold text-slate-300 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-pink-400"></i> 自動編集のパラメータ
+                </h2>
+
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <!-- Cut Duration -->
+                    <div>
+                        <label class="block text-slate-400 mb-1.5 font-medium">1クリップの抽出時間</label>
+                        <select id="clipDuration" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-pink-500">
+                            <option value="1">1 秒（超テンポ）</option>
+                            <option value="2" selected>2 秒（セットログ標準）</option>
+                            <option value="3">3 秒（ゆったり）</option>
+                            <option value="5">5 秒（ロング）</option>
+                            <option value="0">フル再生（切り抜きなし）</option>
+                        </select>
+                    </div>
+
+                    <!-- Aspect Ratio -->
+                    <div>
+                        <label class="block text-slate-400 mb-1.5 font-medium">動画サイズ / アスペクト比</label>
+                        <select id="aspectRatio" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-pink-500">
+                            <option value="9:16" selected>9:16（縦型 TikTok/Reels）</option>
+                            <option value="16:9">16:9（横型 YouTube）</option>
+                            <option value="1:1">1:1（スクエア）</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="space-y-2 pt-1">
+                    <!-- Overlay Timestamp Toggle -->
+                    <label class="flex items-center justify-between p-2.5 bg-slate-800/50 rounded-xl border border-slate-700/50 cursor-pointer hover:bg-slate-800/80">
+                        <span class="text-xs text-slate-300 font-medium flex items-center gap-2">
+                            <i class="fa-regular fa-clock text-purple-400"></i> 時刻スタンプをオーバーレイ表示
+                        </span>
+                        <input type="checkbox" id="showTimestamp" checked class="accent-pink-500 w-4 h-4 rounded">
+                    </label>
+
+                    <!-- Fast Forward / BGM Overlay options -->
+                    <label class="flex items-center justify-between p-2.5 bg-slate-800/50 rounded-xl border border-slate-700/50 cursor-pointer hover:bg-slate-800/80">
+                        <span class="text-xs text-slate-300 font-medium flex items-center gap-2">
+                            <i class="fa-solid fa-volume-high text-indigo-400"></i> 原音を保持（ミュートにしない）
+                        </span>
+                        <input type="checkbox" id="keepAudio" checked class="accent-pink-500 w-4 h-4 rounded">
+                    </label>
+                </div>
+            </div>
+
+            <!-- Clips Management List -->
+            <div class="glass-panel rounded-3xl p-5 flex-grow flex flex-col">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-bold text-slate-300 flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-pink-400"></i> 読み込み済みの動画 (<span id="clipCount">0</span>)
+                    </h2>
+                    <button id="clearAllBtn" class="text-xs text-slate-400 hover:text-rose-400 transition-colors hidden">
+                        <i class="fa-solid fa-trash-can"></i> すべて削除
+                    </button>
+                </div>
+
+                <!-- Empty State -->
+                <div id="emptyClipsState" class="py-8 text-center text-slate-500 flex-grow flex flex-col items-center justify-center border border-dashed border-slate-800 rounded-2xl">
+                    <i class="fa-regular fa-folder-open text-3xl mb-2 text-slate-600"></i>
+                    <p class="text-xs">動画がまだ読み込まれていません</p>
+                </div>
+
+                <!-- Clip Cards Scroll List -->
+                <div id="clipList" class="space-y-2 max-h-60 overflow-y-auto pr-1 hidden"></div>
+            </div>
+
+        </section>
+
+        <!-- Right Column: Auto-Editor Player & Output (7 cols) -->
+        <section class="lg:col-span-7 flex flex-col gap-5">
+            
+            <!-- Canvas Preview Container -->
+            <div class="glass-panel rounded-3xl p-5 flex flex-col items-center justify-center min-h-[420px] relative overflow-hidden">
+                
+                <!-- Aspect Ratio Container (Default 9:16) -->
+                <div id="previewWrapper" class="relative bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-700/60 flex items-center justify-center transition-all duration-300" style="width: 270px; height: 480px;">
+                    <canvas id="editorCanvas" width="540" height="960" class="w-full h-full object-contain"></canvas>
+                    
+                    <!-- Overlay Status Indicator -->
+                    <div id="canvasOverlayText" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+                        <div class="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-pink-400 text-xl mb-3">
+                            <i class="fa-solid fa-film"></i>
+                        </div>
+                        <p class="text-sm font-bold text-slate-200">動画をアップロードして生成を開始</p>
+                        <p class="text-xs text-slate-400 mt-1 max-w-[200px]">セットログのように動画の先頭秒数を自動抽出して1本に結合します</p>
+                    </div>
+
+                    <!-- Progress Overlay during encoding -->
+                    <div id="encodingProgress" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center hidden z-20">
+                        <div class="w-14 h-14 relative flex items-center justify-center mb-4">
+                            <div class="absolute inset-0 rounded-full border-4 border-pink-500/20 border-t-pink-500 animate-spin"></div>
+                            <i class="fa-solid fa-sparkles text-pink-400 text-lg"></i>
+                        </div>
+                        <h4 class="font-bold text-slate-100 text-sm">自動編集・エンコード中...</h4>
+                        <p id="progressStatus" class="text-xs text-slate-400 mt-1">動画を書き出しています</p>
+                        <div class="w-48 bg-slate-800 rounded-full h-2 mt-4 overflow-hidden border border-slate-700">
+                            <div id="progressBar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-full w-0 transition-all duration-200"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Actions Row -->
+                <div class="w-full max-w-md mt-5 flex flex-col sm:flex-row gap-3">
+                    <button id="generateBtn" disabled class="flex-1 py-3 px-5 rounded-2xl font-bold text-sm bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 text-white shadow-lg shadow-pink-500/25 disabled:opacity-40 disabled:shadow-none hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>自動Vlogを生成する</span>
+                    </button>
+                    
+                    <button id="previewBtn" disabled class="py-3 px-4 rounded-2xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-40 transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-play"></i> プレビュー
+                    </button>
+                </div>
+
+            </div>
+
+            <!-- Result Video Card -->
+            <div id="resultCard" class="glass-panel rounded-3xl p-5 hidden animate-fade-in border border-pink-500/30">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <h3 class="font-bold text-slate-200 text-sm">完成した自動Vlog動画</h3>
+                    </div>
+                    <span id="resultInfo" class="text-xs text-slate-400">WebM / MP4</span>
+                </div>
+                
+                <div class="flex flex-col sm:flex-row items-center gap-4">
+                    <video id="renderedVideo" controls class="w-full sm:w-48 h-36 bg-black rounded-xl border border-slate-700 object-contain"></video>
+                    <div class="flex-grow space-y-3 w-full">
+                        <p class="text-xs text-slate-300 leading-relaxed">
+                            セットログ風の自動カット・時系列オーバーレイ付き動画が完成しました。スマホやSNS（TikTok, Shorts, Instagram）にそのまま保存して共有できます。
+                        </p>
+                        <a id="downloadLink" download="Setlog_AutoVlog.webm" class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-600 text-slate-950 transition-all shadow-md shadow-emerald-500/20">
+                            <i class="fa-solid fa-download"></i> 動画をダウンロード
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Toast Notification Overlay -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 text-slate-100 px-4 py-3 rounded-2xl border border-slate-700 shadow-xl flex items-center gap-3">
+        <i id="toastIcon" class="fa-solid fa-circle-info text-pink-400"></i>
+        <span id="toastMsg" class="text-xs font-medium"></span>
+    </div>
+
+    <script>
+        // State Management
+        const uploadedClips = [];
+        let isProcessing = false;
+        let animationFrameId = null;
+
+        // DOM Elements
+        const videoInput = document.getElementById('videoInput');
+        const clipList = document.getElementById('clipList');
+        const emptyClipsState = document.getElementById('emptyClipsState');
+        const clipCount = document.getElementById('clipCount');
+        const clearAllBtn = document.getElementById('clearAllBtn');
+        const generateBtn = document.getElementById('generateBtn');
+        const previewBtn = document.getElementById('previewBtn');
+        const canvas = document.getElementById('editorCanvas');
+        const ctx = canvas.getContext('2d');
+        const previewWrapper = document.getElementById('previewWrapper');
+        const canvasOverlayText = document.getElementById('canvasOverlayText');
+        const encodingProgress = document.getElementById('encodingProgress');
+        const progressBar = document.getElementById('progressBar');
+        const progressStatus = document.getElementById('progressStatus');
+        const resultCard = document.getElementById('resultCard');
+        const renderedVideo = document.getElementById('renderedVideo');
+        const downloadLink = document.getElementById('downloadLink');
+
+        // Settings Inputs
+        const clipDurationInput = document.getElementById('clipDuration');
+        const aspectRatioInput = document.getElementById('aspectRatio');
+        const showTimestampInput = document.getElementById('showTimestamp');
+        const keepAudioInput = document.getElementById('keepAudio');
+
+        // Aspect ratio updater
+        aspectRatioInput.addEventListener('change', updateCanvasDimensions);
+
+        function updateCanvasDimensions() {
+            const ratio = aspectRatioInput.value;
+            if (ratio === '9:16') {
+                canvas.width = 540;
+                canvas.height = 960;
+                previewWrapper.style.width = '270px';
+                previewWrapper.style.height = '480px';
+            } else if (ratio === '16:9') {
+                canvas.width = 960;
+                canvas.height = 540;
+                previewWrapper.style.width = '480px';
+                previewWrapper.style.height = '270px';
+            } else if (ratio === '1:1') {
+                canvas.width = 720;
+                canvas.height = 720;
+                previewWrapper.style.width = '360px';
+                previewWrapper.style.height = '360px';
+            }
+        }
+
+        // Handle File Uploads
+        videoInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+
+            showToast(`${files.length} 個の動画を読み込み中...`, 'info');
+
+            for (const file of files) {
+                try {
+                    const videoElem = document.createElement('video');
+                    videoElem.preload = 'metadata';
+                    videoElem.src = URL.createObjectURL(file);
+                    videoElem.muted = true;
+                    videoElem.playsInline = true;
+
+                    await new Promise((resolve) => {
+                        videoElem.onloadedmetadata = () => resolve();
+                    });
+
+                    // Fake/Real Timestamp generation (e.g., setlog time style)
+                    const fileDate = new Date(file.lastModified || Date.now());
+                    const timeString = fileDate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+
+                    uploadedClips.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        file: file,
+                        video: videoElem,
+                        name: file.name,
+                        duration: videoElem.duration,
+                        timeLabel: timeString
+                    });
+                } catch (err) {
+                    console.error('Video load error:', err);
+                }
+            }
+
+            renderClipList();
+            videoInput.value = '';
+            showToast('動画の自動解析が完了しました！', 'success');
+        });
+
+        // Render Clips UI
+        function renderClipList() {
+            clipList.innerHTML = '';
+            clipCount.textContent = uploadedClips.length;
+
+            if (uploadedClips.length === 0) {
+                emptyClipsState.classList.remove('hidden');
+                clipList.classList.add('hidden');
+                clearAllBtn.classList.add('hidden');
+                generateBtn.disabled = true;
+                previewBtn.disabled = true;
+                canvasOverlayText.classList.remove('hidden');
+                return;
+            }
+
+            emptyClipsState.classList.add('hidden');
+            clipList.classList.remove('hidden');
+            clearAllBtn.classList.remove('hidden');
+            generateBtn.disabled = false;
+            previewBtn.disabled = false;
+
+            uploadedClips.forEach((clip, index) => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-2xl text-xs text-slate-200';
+                item.innerHTML = `
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <span class="w-5 h-5 rounded-full bg-slate-700 text-slate-400 font-bold flex items-center justify-center text-[10px] shrink-0">${index + 1}</span>
+                        <div class="truncate">
+                            <p class="font-semibold truncate">${clip.name}</p>
+                            <span class="text-[10px] text-pink-400 font-medium"><i class="fa-regular fa-clock"></i> ${clip.timeLabel} • ${clip.duration.toFixed(1)}s</span>
+                        </div>
+                    </div>
+                    <button onclick="removeClip('${clip.id}')" class="text-slate-500 hover:text-rose-400 p-1 transition-colors shrink-0">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                `;
+                clipList.appendChild(item);
+            });
+        }
+
+        function removeClip(id) {
+            const idx = uploadedClips.findIndex(c => c.id === id);
+            if (idx !== -1) {
+                URL.revokeObjectURL(uploadedClips[idx].video.src);
+                uploadedClips.splice(idx, 1);
+                renderClipList();
+            }
+        }
+
+        clearAllBtn.addEventListener('click', () => {
+            uploadedClips.forEach(c => URL.revokeObjectURL(c.video.src));
+            uploadedClips.length = 0;
+            renderClipList();
+        });
+
+        // Draw Frame with Setlog-style Overlays
+        function drawVideoFrame(video, timeLabel) {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!video || video.readyState < 2) return;
+
+            // Calculate cover scale
+            const vWidth = video.videoWidth;
+            const vHeight = video.videoHeight;
+            const cWidth = canvas.width;
+            const cHeight = canvas.height;
+
+            const scale = Math.max(cWidth / vWidth, cHeight / vHeight);
+            const x = (cWidth - vWidth * scale) / 2;
+            const y = (cHeight - vHeight * scale) / 2;
+
+            ctx.drawImage(video, x, y, vWidth * scale, vHeight * scale);
+
+            // Draw Setlog Timestamp Overlay if enabled
+            if (showTimestampInput.checked && timeLabel) {
+                ctx.save();
+                // Bottom-left vignette/gradient
+                const grad = ctx.createLinearGradient(0, canvas.height - 120, 0, canvas.height);
+                grad.addColorStop(0, 'transparent');
+                grad.addColorStop(1, 'rgba(0,0,0,0.7)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, canvas.height - 120, canvas.width, 120);
+
+                // Time Badge
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 10;
+                ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
+                ctx.fillText(timeLabel, 30, canvas.height - 40);
+
+                // Setlog Tag Badge
+                ctx.font = '600 18px "Zen Kaku Gothic New", sans-serif';
+                ctx.fillStyle = '#ec4899';
+                ctx.fillText('• SETLOG DAILY VLOG', 30, canvas.height - 85);
+                ctx.restore();
+            }
+        }
+
+        // Preview Animation
+        previewBtn.addEventListener('click', async () => {
+            if (isProcessing) return;
+            canvasOverlayText.classList.add('hidden');
+            
+            const maxClipDur = parseFloat(clipDurationInput.value);
+            
+            for (let i = 0; i < uploadedClips.length; i++) {
+                const clip = uploadedClips[i];
+                const video = clip.video;
+                video.currentTime = 0;
+                
+                await video.play().catch(() => {});
+                
+                const dur = (maxClipDur > 0 && maxClipDur < clip.duration) ? maxClipDur : clip.duration;
+                const startTime = Date.now();
+
+                await new Promise((resolve) => {
+                    function loop() {
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        drawVideoFrame(video, clip.timeLabel);
+
+                        if (elapsed < dur && !video.ended) {
+                            requestAnimationFrame(loop);
+                        } else {
+                            video.pause();
+                            resolve();
+                        }
+                    }
+                    loop();
+                });
+            }
+            showToast('プレビュー再生が終了しました', 'info');
+        });
+
+        generateBtn.addEventListener('click', async () => {
+            if (uploadedClips.length === 0 || isProcessing) return;
+
+            isProcessing = true;
+            generateBtn.disabled = true;
+            canvasOverlayText.classList.add('hidden');
+            encodingProgress.classList.remove('hidden');
+            resultCard.classList.add('hidden');
+
+            const maxClipDur = parseFloat(clipDurationInput.value);
+            const keepAudio = keepAudioInput.checked;
+
+            // Prepare Canvas Stream Recording
+            const canvasStream = canvas.captureStream(30); // 30 FPS
+            let mediaRecorder;
+
+            try {
+                const options = { mimeType: 'video/webm;codecs=vp9' };
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                    options.mimeType = 'video/webm';
+                }
+                mediaRecorder = new MediaRecorder(canvasStream, options);
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(canvasStream);
+            }
+
+            const chunks = [];
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            mediaRecorder.start();
+
+            const totalClips = uploadedClips.length;
+
+            for (let i = 0; i < totalClips; i++) {
+                const clip = uploadedClips[i];
+                const video = clip.video;
+                
+                video.currentTime = 0;
+                video.muted = !keepAudio;
+
+                progressStatus.textContent = `クリップ ${i + 1} / ${totalClips} を処理中...`;
+                progressBar.style.width = `${((i) / totalClips) * 100}%`;
+
+                await video.play().catch(() => {});
+
+                const targetDuration = (maxClipDur > 0 && maxClipDur < clip.duration) ? maxClipDur : clip.duration;
+                const startTime = Date.now();
+
+                await new Promise((resolve) => {
+                    function renderStep() {
+                        const elapsed = (Date.now() - startTime) / 1000;
+                        drawVideoFrame(video, clip.timeLabel);
+
+                        if (elapsed < targetDuration && !video.ended) {
+                            requestAnimationFrame(renderStep);
+                        } else {
+                            video.pause();
+                            resolve();
+                        }
+                    }
+                    renderStep();
+                });
+            }
+
+            progressBar.style.width = '100%';
+            progressStatus.textContent = 'エンコードを仕上げ中...';
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const videoUrl = URL.createObjectURL(blob);
+
+                renderedVideo.src = videoUrl;
+                downloadLink.href = videoUrl;
+                downloadLink.download = `Setlog_Vlog_${new Date().toISOString().slice(0, 10)}.webm`;
+
+                encodingProgress.classList.add('hidden');
+                resultCard.classList.remove('hidden');
+                isProcessing = false;
+                generateBtn.disabled = false;
+
+                showToast('自動Vlogの生成が完了しました！', 'success');
+            };
+
+            // Stop MediaRecorder after slight delay
+            setTimeout(() => {
+                mediaRecorder.stop();
+            }, 300);
+        });
+
+        // Toast Helper
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMsg.textContent = message;
+
+            if (type === 'success') {
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
+            } else if (type === 'error') {
+                toastIcon.className = 'fa-solid fa-circle-exclamation text-rose-400';
+            } else {
+                toastIcon.className = 'fa-solid fa-wand-magic-sparkles text-pink-400';
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Initialize aspect ratio on load
+        updateCanvasDimensions();
+    </script>
+</body>
+</html>
