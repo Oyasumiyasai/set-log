@@ -118,7 +118,7 @@
             
             <!-- Upload Box -->
             <div class="glass-panel rounded-3xl p-5 relative overflow-hidden group border-dashed border-2 border-slate-700 hover:border-rose-500/50 transition-all duration-300">
-                <input type="file" id="videoInput" multiple accept="video/*,video/mp4,video/quicktime,video/mov,video/x-m4v" class="absolute inset-0 opacity-0 cursor-pointer z-20">
+                <input type="file" id="videoInput" multiple accept="video/*" class="absolute inset-0 opacity-0 cursor-pointer z-20">
                 <div class="text-center py-4 flex flex-col items-center justify-center pointer-events-none">
                     <div class="w-14 h-14 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-rose-400 text-2xl mb-3 group-hover:scale-110 transition-transform">
                         <i class="fa-solid fa-cloud-arrow-up"></i>
@@ -289,6 +289,43 @@
         // Application State Management
         const uploadedClips = [];
         let isProcessing = false;
+
+        // Toast Notification Helper
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+
+            if (!toast || !toastMessage || !toastIcon) return;
+
+            toastMessage.textContent = message;
+
+            if (type === 'success') {
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
+            } else if (type === 'error') {
+                toastIcon.className = 'fa-solid fa-circle-exclamation text-rose-500';
+            } else {
+                toastIcon.className = 'fa-solid fa-circle-info text-sky-400';
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Scroll Helper for Mobile
+        function scrollToPreviewOnMobile() {
+            if (window.innerWidth < 1024) {
+                const previewSection = document.getElementById('previewSection');
+                if (previewSection) {
+                    previewSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            }
+        }
 
         // DOM Element Selectors
         const videoInput = document.getElementById('videoInput');
@@ -573,13 +610,17 @@
                 // Dark semi-transparent pill badge
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
                 ctx.beginPath();
-                ctx.roundRect(
-                    tx - paddingX * 0.5,
-                    ty - fontSize,
-                    textWidth + paddingX * 1.2,
-                    fontSize + paddingY,
-                    12
-                );
+                const rx = tx - paddingX * 0.5;
+                const ry = ty - fontSize;
+                const rw = textWidth + paddingX * 1.2;
+                const rh = fontSize + paddingY;
+                const radius = 12;
+
+                if (typeof ctx.roundRect === 'function') {
+                    ctx.roundRect(rx, ry, rw, rh, radius);
+                } else {
+                    ctx.rect(rx, ry, rw, rh);
+                }
                 ctx.fill();
 
                 // Text shadow & styling
