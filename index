@@ -118,7 +118,7 @@
             
             <!-- Upload Box -->
             <div class="glass-panel rounded-3xl p-5 relative overflow-hidden group border-dashed border-2 border-slate-700 hover:border-rose-500/50 transition-all duration-300">
-                <input type="file" id="videoInput" multiple accept="video/*" class="absolute inset-0 opacity-0 cursor-pointer z-20">
+                <input type="file" id="videoInput" multiple accept="video/*,video/mp4,video/quicktime,video/mov,video/x-m4v" class="absolute inset-0 opacity-0 cursor-pointer z-20">
                 <div class="text-center py-4 flex flex-col items-center justify-center pointer-events-none">
                     <div class="w-14 h-14 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-rose-400 text-2xl mb-3 group-hover:scale-110 transition-transform">
                         <i class="fa-solid fa-cloud-arrow-up"></i>
@@ -349,6 +349,7 @@
         // Detect supported MIME type (Optimized for iOS Safari & Chrome)
         function getSupportedMimeType() {
             const types = [
+                'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
                 'video/mp4;codecs=avc1',
                 'video/mp4',
                 'video/webm;codecs=vp9',
@@ -364,54 +365,67 @@
         }
 
         // Auto-scroll to preview container on small screens
-        function scrollToPreviewOnMobile() {
-            if (window.innerWidth < 1024 && previewSection) {
-                previewSection.scrollIntoView({ behavior: 'smooth' });
-            }
-        }
-
-        // Toast Notification System
-        function showToast(msg, type = 'info') {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toastMessage');
-            const toastIcon = document.getElementById('toastIcon');
-
-            toastMessage.textContent = msg;
-            if (type === 'success') {
-                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
-            } else if (type === 'error') {
-                toastIcon.className = 'fa-solid fa-circle-exclamation text-rose-500';
-            } else {
-                toastIcon.className = 'fa-solid fa-circle-info text-sky-400';
-            }
-
-            toast.classList.remove('translate-y-20', 'opacity-0');
-            setTimeout(() => {
-                toast.classList.add('translate-y-20', 'opacity-0');
-            }, 3000);
-        }
-
-        // File Upload Handler
+        // File Upload Handler (Optimized for iOS Safari & Mobile Chrome)
         videoInput.addEventListener('change', async (e) => {
             const files = Array.from(e.target.files);
             if (!files.length) return;
 
             showToast(`${files.length} 件の動画を読み込み中...`, 'info');
+            let successCount = 0;
 
             for (const file of files) {
+                // Check if file is valid
+                if (!file || file.size === 0) {
+                    showToast('iCloud上の動画は一度端末に保存してから選択してください', 'error');
+                    continue;
+                }
+
                 try {
+                    const objectUrl = URL.createObjectURL(file);
                     const videoElem = document.createElement('video');
+                    
+                    // iOS Mobile Safari mandatory properties
                     videoElem.preload = 'metadata';
+                    videoElem.playsInline = true;
+                    videoElem.muted = true;
+                    videoElem.autoplay = false;
                     videoElem.setAttribute('playsinline', '');
                     videoElem.setAttribute('webkit-playsinline', '');
-                    videoElem.muted = true;
-                    videoElem.src = URL.createObjectURL(file);
 
-                    await new Promise((resolve) => {
-                        videoElem.onloadedmetadata = () => resolve();
-                        videoElem.onerror = () => resolve();
-                        setTimeout(resolve, 2000); // Safety fallback timeout
+                    const loadPromise = new Promise((resolve, reject) => {
+                        const onLoaded = () => {
+                            cleanup();
+                            resolve(true);
+                        };
+                        const onError = (err) => {
+                            cleanup();
+                            reject(err);
+                        };
+                        const cleanup = () => {
+                            videoElem.removeEventListener('loadedmetadata', onLoaded);
+                            videoElem.removeEventListener('loadeddata', onLoaded);
+                            videoElem.removeEventListener('error', onError);
+                        };
+
+                        videoElem.addEventListener('loadedmetadata', onLoaded);
+                        videoElem.addEventListener('loadeddata', onLoaded);
+                        videoElem.addEventListener('error', onError);
+
+                        // Safety timeout for mobile devices
+                        setTimeout(() => {
+                            cleanup();
+                            if (videoElem.readyState >= 1) {
+                                resolve(true);
+                            } else {
+                                resolve(false); // resolve anyway to attempt playback
+                            }
+                        }, 3000);
                     });
+
+                    videoElem.src = objectUrl;
+                    videoElem.load(); // Explicit load call for Safari/iOS
+
+                    await loadPromise;
 
                     const fileDate = new Date(file.lastModified || Date.now());
                     const hours = String(fileDate.getHours()).padStart(2, '0');
@@ -421,12 +435,14 @@
                     uploadedClips.push({
                         id: Math.random().toString(36).substr(2, 9),
                         file: file,
+                        objectUrl: objectUrl,
                         video: videoElem,
                         name: file.name,
                         timestamp: fileDate.getTime(),
-                        duration: videoElem.duration || 3,
+                        duration: videoElem.duration && !isNaN(videoElem.duration) ? videoElem.duration : 3,
                         timeLabel: timeString
                     });
+                    successCount++;
                 } catch (err) {
                     console.error('Video loading error:', err);
                 }
@@ -437,7 +453,12 @@
 
             renderClipList();
             videoInput.value = '';
-            showToast('動画の準備が完了しました', 'success');
+
+            if (successCount > 0) {
+                showToast(`${successCount} 件の動画の準備が完了しました`, 'success');
+            } else {
+                showToast('動画の読み込みに失敗しました。標準のMP4/MOV形式でお試しください', 'error');
+            }
         });
 
         // Render Clip Item List
@@ -483,12 +504,18 @@
         function removeClip(id) {
             const index = uploadedClips.findIndex(c => c.id === id);
             if (index !== -1) {
+                if (uploadedClips[index].objectUrl) {
+                    URL.revokeObjectURL(uploadedClips[index].objectUrl);
+                }
                 uploadedClips.splice(index, 1);
                 renderClipList();
             }
         }
 
         clearAllBtn.addEventListener('click', () => {
+            uploadedClips.forEach(clip => {
+                if (clip.objectUrl) URL.revokeObjectURL(clip.objectUrl);
+            });
             uploadedClips.length = 0;
             renderClipList();
             showToast('すべてのクリップを削除しました', 'info');
