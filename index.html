@@ -262,7 +262,7 @@
                 </div>
                 
                 <div class="flex flex-col sm:flex-row items-center gap-4">
-                    <video id="renderedVideo" controls playsinline webkit-playsinline class="w-full sm:w-48 h-48 sm:h-36 bg-black rounded-2xl border border-slate-700 object-contain"></video>
+                    <video id="renderedVideo" controls playsinline webkit-playsinline class="w-full sm:w-48 bg-black rounded-2xl border border-slate-700 object-contain shadow-lg" style="aspect-ratio: 9/16;"></video>
                     <div class="flex-grow space-y-3 w-full">
                         <p class="text-xs text-slate-300 leading-relaxed">
                             自動カット＆タイムスタンプ入りのVlog動画が完成しました。スマホ端末や各種SNS（TikTok, Shorts, Instagram）に保存して共有できます。
@@ -360,8 +360,6 @@
         });
 
         // Update Canvas Aspect Ratio Dimensions
-        aspectRatioInput.addEventListener('change', updateCanvasDimensions);
-
         function updateCanvasDimensions() {
             const ratio = aspectRatioInput.value;
             if (ratio === '9:16') {
@@ -369,19 +367,95 @@
                 canvas.height = 960;
                 previewWrapper.style.aspectRatio = '9/16';
                 previewWrapper.style.maxWidth = '300px';
+                if (renderedVideo) {
+                    renderedVideo.style.aspectRatio = '9/16';
+                    renderedVideo.style.maxWidth = '220px';
+                }
             } else if (ratio === '16:9') {
                 canvas.width = 960;
                 canvas.height = 540;
                 previewWrapper.style.aspectRatio = '16/9';
                 previewWrapper.style.maxWidth = '100%';
+                if (renderedVideo) {
+                    renderedVideo.style.aspectRatio = '16/9';
+                    renderedVideo.style.maxWidth = '100%';
+                }
             } else if (ratio === '1:1') {
                 canvas.width = 720;
                 canvas.height = 720;
                 previewWrapper.style.aspectRatio = '1/1';
                 previewWrapper.style.maxWidth = '340px';
+                if (renderedVideo) {
+                    renderedVideo.style.aspectRatio = '1/1';
+                    renderedVideo.style.maxWidth = '280px';
+                }
             }
         }
         updateCanvasDimensions();
+
+        // MP4 / QuickTime MOV Atom parser to extract actual shooting time (mvhd box)
+        async function getVideoCreationDate(file) {
+            try {
+                const sliceSize = Math.min(file.size, 2 * 1024 * 1024); // Read first 2MB
+                const buffer = await file.slice(0, sliceSize).arrayBuffer();
+                const view = new DataView(buffer);
+                
+                let offset = 0;
+                while (offset < buffer.byteLength - 8) {
+                    const size = view.getUint32(offset);
+                    const type = String.fromCharCode(
+                        view.getUint8(offset + 4),
+                        view.getUint8(offset + 5),
+                        view.getUint8(offset + 6),
+                        view.getUint8(offset + 7)
+                    );
+
+                    if (size === 1) {
+                        offset += 16;
+                        continue;
+                    }
+                    if (size < 8) break;
+
+                    if (type === 'moov') {
+                        let moovOffset = offset + 8;
+                        const moovEnd = offset + size;
+                        while (moovOffset < moovEnd - 8) {
+                            const subSize = view.getUint32(moovOffset);
+                            const subType = String.fromCharCode(
+                                view.getUint8(moovOffset + 4),
+                                view.getUint8(moovOffset + 5),
+                                view.getUint8(moovOffset + 6),
+                                view.getUint8(moovOffset + 7)
+                            );
+                            if (subType === 'mvhd') {
+                                const version = view.getUint8(moovOffset + 8);
+                                let creationTime;
+                                if (version === 1) {
+                                    const high = view.getUint32(moovOffset + 12);
+                                    const low = view.getUint32(moovOffset + 16);
+                                    creationTime = high * 0x100000000 + low;
+                                } else {
+                                    creationTime = view.getUint32(moovOffset + 12);
+                                }
+                                // QuickTime Epoch (1904) -> Unix Epoch (1970) conversion
+                                if (creationTime > 2082844800) {
+                                    const unixEpochMs = (creationTime - 2082844800) * 1000;
+                                    const date = new Date(unixEpochMs);
+                                    if (!isNaN(date.getTime()) && date.getFullYear() > 2000) {
+                                        return date;
+                                    }
+                                }
+                            }
+                            moovOffset += (subSize === 1) ? 16 : (subSize || 8);
+                        }
+                    }
+                    offset += size;
+                }
+            } catch (e) {
+                console.warn('Metadata parse warning:', e);
+            }
+            return new Date(file.lastModified || Date.now());
+        }
 
         // Detect supported MIME type (Optimized for iOS Safari & Chrome)
         function getSupportedMimeType() {
@@ -464,7 +538,8 @@
 
                     await loadPromise;
 
-                    const fileDate = new Date(file.lastModified || Date.now());
+                    // Extract true shooting time from MP4/MOV metadata instead of upload time
+                    const fileDate = await getVideoCreationDate(file);
                     const hours = String(fileDate.getHours()).padStart(2, '0');
                     const mins = String(fileDate.getMinutes()).padStart(2, '0');
                     const timeString = `${hours}:${mins}`;
