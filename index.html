@@ -139,6 +139,7 @@
                             <label class="text-xs font-semibold text-slate-300 block mb-1.5">スタンプ表示位置</label>
                             <select id="showTimestamp" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500">
                                 <option value="bottom-left">左下（セットログ風）</option>
+                                <option value="center">画面中央（真ん中）</option>
                                 <option value="top-left">左上</option>
                                 <option value="bottom-right">右下</option>
                                 <option value="top-right">右上</option>
@@ -157,6 +158,19 @@
                                 <option value="cyber-neon">サイバーネオン (グラデ枠)</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-semibold text-slate-300 block mb-1.5">動画フィルター</label>
+                        <select id="videoFilter" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500">
+                            <option value="none">フィルターなし (標準)</option>
+                            <option value="monochrome">モノクロ (白黒)</option>
+                            <option value="sepia">セピア (ノスタルジック)</option>
+                            <option value="vintage">ヴィンテージ (暖色レトロ)</option>
+                            <option value="cool">クール (青調/透明感)</option>
+                            <option value="vivid">ビビッド (鮮やか/高コントラスト)</option>
+                            <option value="cinematic">シネマティック (映画風/重厚)</option>
+                        </select>
                     </div>
 
                     <div class="flex items-center justify-between pt-2">
@@ -247,6 +261,7 @@
         const showTimestampInput = document.getElementById('showTimestamp');
         const stampFormatInput = document.getElementById('stampFormat');
         const stampStyleInput = document.getElementById('stampStyle');
+        const videoFilterInput = document.getElementById('videoFilter');
         const keepAudioInput = document.getElementById('keepAudio');
         
         const clipList = document.getElementById('clipList');
@@ -560,7 +575,27 @@
                 dy = (ch - dh) / 2;
             }
 
+            // Apply Video Filter
+            ctx.save();
+            const filterType = videoFilterInput ? videoFilterInput.value : 'none';
+            if (filterType === 'monochrome') {
+                ctx.filter = 'grayscale(100%)';
+            } else if (filterType === 'sepia') {
+                ctx.filter = 'sepia(80%) brightness(95%) contrast(105%)';
+            } else if (filterType === 'vintage') {
+                ctx.filter = 'sepia(35%) contrast(110%) brightness(105%) saturate(120%)';
+            } else if (filterType === 'cool') {
+                ctx.filter = 'hue-rotate(180deg) saturate(85%) contrast(105%)';
+            } else if (filterType === 'vivid') {
+                ctx.filter = 'saturate(160%) contrast(115%)';
+            } else if (filterType === 'cinematic') {
+                ctx.filter = 'contrast(125%) brightness(90%) saturate(90%)';
+            } else {
+                ctx.filter = 'none';
+            }
+
             ctx.drawImage(video, dx, dy, dw, dh);
+            ctx.restore(); // Restore filter state so stamp is clean
 
             // Stamp Position & Text Format Processing
             const stampPosition = showTimestampInput.value;
@@ -605,7 +640,10 @@
             let rx = rxMargin;
             let ry = ch - rh - ryMargin;
 
-            if (stampPosition === 'top-left') {
+            if (stampPosition === 'center') {
+                rx = (cw - rw) / 2;
+                ry = (ch - rh) / 2;
+            } else if (stampPosition === 'top-left') {
                 rx = rxMargin;
                 ry = ryMargin;
             } else if (stampPosition === 'top-right') {
@@ -725,14 +763,14 @@
         // MIME Type helper for cross-device support
         function getSupportedMimeType() {
             const types = [
-                'video/mp4;codecs=h264',
+                'video/mp4;codecs=h264,aac',
                 'video/mp4',
-                'video/webm;codecs=vp9',
-                'video/webm;codecs=vp8',
+                'video/webm;codecs=vp9,opus',
+                'video/webm;codecs=vp8,opus',
                 'video/webm'
             ];
             for (const type of types) {
-                if (MediaRecorder.isTypeSupported(type)) return type;
+                if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) return type;
             }
             return '';
         }
@@ -743,6 +781,7 @@
 
             isProcessing = true;
             generateBtn.disabled = true;
+            previewBtn.disabled = true;
             canvasOverlayText.classList.add('hidden');
             encodingProgress.classList.remove('hidden');
             resultCard.classList.add('hidden');
@@ -753,22 +792,49 @@
 
             const fps = 30;
             const canvasStream = canvas.captureStream(fps);
-            let mediaRecorder;
+            let compositeStream = new MediaStream(canvasStream.getVideoTracks());
 
+            // Audio Context setup for robust audio mixing
+            let audioCtx = null;
+            let audioDestination = null;
+
+            if (keepAudio) {
+                try {
+                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContextClass) {
+                        audioCtx = new AudioContextClass();
+                        if (audioCtx.state === 'suspended') {
+                            await audioCtx.resume();
+                        }
+                        audioDestination = audioCtx.createMediaStreamDestination();
+                        const audioTracks = audioDestination.stream.getAudioTracks();
+                        if (audioTracks.length > 0) {
+                            compositeStream.addTrack(audioTracks[0]);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Audio Context setup failed:', e);
+                }
+            }
+
+            let mediaRecorder;
             const selectedMime = getSupportedMimeType();
             try {
-                mediaRecorder = selectedMime ? 
-                    new MediaRecorder(canvasStream, { mimeType: selectedMime }) : 
-                    new MediaRecorder(canvasStream);
+                const options = selectedMime ? { mimeType: selectedMime } : {};
+                mediaRecorder = new MediaRecorder(compositeStream, options);
             } catch (e) {
-                console.warn('Fallback MediaRecorder:', e);
-                mediaRecorder = new MediaRecorder(canvasStream);
+                console.warn('MediaRecorder init fallback:', e);
+                mediaRecorder = new MediaRecorder(compositeStream);
             }
 
             const chunks = [];
             mediaRecorder.ondataavailable = (e) => {
                 if (e.data && e.data.size > 0) chunks.push(e.data);
             };
+
+            const recorderStoppedPromise = new Promise((resolve) => {
+                mediaRecorder.onstop = () => resolve();
+            });
 
             mediaRecorder.start(100);
             const totalClips = uploadedClips.length;
@@ -777,26 +843,47 @@
                 const clip = uploadedClips[i];
                 const video = clip.video;
 
-                video.currentTime = 0;
-                video.muted = !keepAudio;
-
                 progressStatus.textContent = `クリップ ${i + 1} / ${totalClips} を書き出し中...`;
                 progressBar.style.width = `${((i) / totalClips) * 100}%`;
 
-                await video.play().catch(() => {});
+                video.currentTime = 0;
+                video.muted = !keepAudio;
+
+                let mediaSourceNode = null;
+                if (keepAudio && audioCtx && audioDestination) {
+                    try {
+                        // Connect element to audio destination graph
+                        mediaSourceNode = audioCtx.createMediaElementSource(video);
+                        mediaSourceNode.connect(audioDestination);
+                    } catch (err) {
+                        // Node might already be connected
+                    }
+                }
+
+                try {
+                    await video.play();
+                } catch (err) {
+                    console.warn('Video play auto-try:', err);
+                }
 
                 const targetDuration = Math.min(maxClipDur, clip.duration);
                 const startTime = Date.now();
 
                 await new Promise((resolve) => {
+                    let frameReqId = null;
+
                     function renderStep() {
                         const elapsed = (Date.now() - startTime) / 1000;
                         drawVideoFrame(video, clip, i);
 
                         if (elapsed < targetDuration && !video.ended) {
-                            requestAnimationFrame(renderStep);
+                            frameReqId = requestAnimationFrame(renderStep);
                         } else {
+                            if (frameReqId) cancelAnimationFrame(frameReqId);
                             video.pause();
+                            if (mediaSourceNode) {
+                                try { mediaSourceNode.disconnect(); } catch(e){}
+                            }
                             resolve();
                         }
                     }
@@ -807,32 +894,35 @@
             progressBar.style.width = '100%';
             progressStatus.textContent = '動画ファイルを仕上げ中...';
 
-            mediaRecorder.onstop = () => {
-                const finalMime = mediaRecorder.mimeType || 'video/mp4';
-                const isMp4 = finalMime.includes('mp4');
-                const fileExt = isMp4 ? 'mp4' : 'webm';
+            if (mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
 
-                const blob = new Blob(chunks, { type: finalMime });
-                const videoUrl = URL.createObjectURL(blob);
+            await recorderStoppedPromise;
 
-                renderedVideo.src = videoUrl;
-                downloadLink.href = videoUrl;
-                downloadLink.download = `Setlog_Vlog_${new Date().toISOString().slice(0, 10)}.${fileExt}`;
-                document.getElementById('resultInfo').textContent = isMp4 ? 'MP4 動画 (スマホ/PC対応)' : 'WebM 動画';
+            if (audioCtx) {
+                try { await audioCtx.close(); } catch(e){}
+            }
 
-                encodingProgress.classList.add('hidden');
-                resultCard.classList.remove('hidden');
-                isProcessing = false;
-                generateBtn.disabled = false;
+            const finalMime = mediaRecorder.mimeType || 'video/mp4';
+            const isMp4 = finalMime.includes('mp4');
+            const fileExt = isMp4 ? 'mp4' : 'webm';
 
-                showToast('自動Vlogの生成が完了しました！', 'success');
-            };
+            const blob = new Blob(chunks, { type: finalMime });
+            const videoUrl = URL.createObjectURL(blob);
 
-            setTimeout(() => {
-                if (mediaRecorder.state !== 'inactive') {
-                    mediaRecorder.stop();
-                }
-            }, 300);
+            renderedVideo.src = videoUrl;
+            downloadLink.href = videoUrl;
+            downloadLink.download = `Setlog_Vlog_${new Date().toISOString().slice(0, 10)}.${fileExt}`;
+            document.getElementById('resultInfo').textContent = isMp4 ? 'MP4 動画 (スマホ/PC対応)' : 'WebM 動画';
+
+            encodingProgress.classList.add('hidden');
+            resultCard.classList.remove('hidden');
+            isProcessing = false;
+            generateBtn.disabled = false;
+            previewBtn.disabled = false;
+
+            showToast('自動Vlogの生成が完了しました！', 'success');
         });
     </script>
 </body>
