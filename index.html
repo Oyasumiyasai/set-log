@@ -41,12 +41,15 @@
     </style>
 </head>
 <body class="min-h-screen pb-12 text-slate-100 flex flex-col items-center">
+    <!-- Hidden container for off-screen video elements (prevents Safari buffering stalls) -->
+    <div id="hiddenVideoContainer" style="display:none; width:0; height:0; overflow:hidden;" aria-hidden="true"></div>
+
     <!-- Header -->
     <header class="w-full border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
         <div class="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
             <div class="flex items-center gap-2.5">
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-rose-500 to-amber-500 flex items-center justify-center shadow-lg shadow-rose-500/20">
-                    <i class="fa-solid fa-[#f43f5e] fa-film text-white text-base"></i>
+                    <i class="fa-solid fa-film text-white text-base"></i>
                 </div>
                 <div>
                     <h1 class="font-bold text-base tracking-tight text-white flex items-center gap-2">
@@ -75,7 +78,7 @@
                         <i class="fa-solid fa-video text-lg"></i>
                     </div>
                     <span class="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">動画ファイルをアップロード</span>
-                    <span class="text-[10px] text-slate-500 mt-1">複数ファイル選択対応 (iPhone/Android対応)</span>
+                    <span class="text-[10px] text-slate-500 mt-1">複数ファイル選択対応 (iPhone/Android/PC)</span>
                 </label>
 
                 <!-- File List Container -->
@@ -252,8 +255,9 @@
         </div>
     </div>
 
+    <!-- Application Script -->
     <script>
-        // DOM Element References Initialized at start
+        // DOM Element References
         const videoInput = document.getElementById('videoInput');
         const clipDurationInput = document.getElementById('clipDuration');
         const durationValue = document.getElementById('durationValue');
@@ -281,10 +285,12 @@
         const renderedVideo = document.getElementById('renderedVideo');
         const downloadLink = document.getElementById('downloadLink');
         const ratioBadge = document.getElementById('ratioBadge');
+        const hiddenVideoContainer = document.getElementById('hiddenVideoContainer');
 
-        // State variables
+        // Global State
         let uploadedClips = [];
         let isProcessing = false;
+        let activeClipIndex = 0; // Currently previewed clip index
 
         // Toast notification helper
         function showToast(message, type = 'info') {
@@ -304,7 +310,7 @@
             toast.classList.remove('translate-y-20', 'opacity-0');
             setTimeout(() => {
                 toast.classList.add('translate-y-20', 'opacity-0');
-            }, 3000);
+            }, 3500);
         }
 
         function scrollToPreviewOnMobile() {
@@ -313,12 +319,24 @@
             }
         }
 
+        // Live static frame preview update
+        function updateLivePreview() {
+            if (uploadedClips.length === 0 || isProcessing) return;
+            if (activeClipIndex >= uploadedClips.length) activeClipIndex = 0;
+
+            canvasOverlayText.classList.add('hidden');
+            const clip = uploadedClips[activeClipIndex];
+            if (clip && clip.video) {
+                drawVideoFrame(clip.video, clip, activeClipIndex);
+            }
+        }
+
         // Update Slider UI
         clipDurationInput.addEventListener('input', (e) => {
             durationValue.textContent = `${parseFloat(e.target.value).toFixed(1)} 秒`;
         });
 
-        // Update Canvas Aspect Ratio Resolution
+        // Update Canvas Aspect Ratio Resolution & Redraw Preview
         function updateCanvasDimensions() {
             const ratio = aspectRatioInput.value;
             ratioBadge.textContent = ratio;
@@ -333,21 +351,61 @@
                 canvas.width = 1080;
                 canvas.height = 1080;
             }
+            updateLivePreview();
         }
 
         aspectRatioInput.addEventListener('change', updateCanvasDimensions);
+        showTimestampInput.addEventListener('change', updateLivePreview);
+        stampFormatInput.addEventListener('change', updateLivePreview);
+        stampStyleInput.addEventListener('change', updateLivePreview);
+        videoFilterInput.addEventListener('change', updateLivePreview);
+
         updateCanvasDimensions();
+
+        // Helper: read array buffer slice
+        async function readBufferSlice(file, start, length) {
+            try {
+                const slice = file.slice(start, Math.min(file.size, start + length));
+                return await slice.arrayBuffer();
+            } catch(e) {
+                return null;
+            }
+        }
 
         // MP4 / QuickTime MOV Atom parser to extract actual shooting time (mvhd box)
         async function getVideoCreationDate(file) {
             try {
-                const sliceSize = Math.min(file.size, 4 * 1024 * 1024); // Read first 4MB
-                const buffer = await file.slice(0, sliceSize).arrayBuffer();
+                // Try reading start 4MB first, then end 4MB if moov atom is at file end (common in iPhone videos)
+                let buffer = await readBufferSlice(file, 0, 4 * 1024 * 1024);
+                if (!buffer) return new Date(file.lastModified || Date.now());
+
+                let date = parseMoovDate(buffer);
+                if (date) return date;
+
+                // Check end of file if not found in head
+                if (file.size > 4 * 1024 * 1024) {
+                    const tailStart = Math.max(0, file.size - 4 * 1024 * 1024);
+                    buffer = await readBufferSlice(file, tailStart, 4 * 1024 * 1024);
+                    if (buffer) {
+                        date = parseMoovDate(buffer);
+                        if (date) return date;
+                    }
+                }
+            } catch (e) {
+                console.warn('Metadata parse warning:', e);
+            }
+
+            return new Date(file.lastModified || Date.now());
+        }
+
+        function parseMoovDate(buffer) {
+            try {
                 const view = new DataView(buffer);
-                
                 let offset = 0;
                 while (offset < buffer.byteLength - 8) {
                     const size = view.getUint32(offset);
+                    if (size < 8) break;
+
                     const type = String.fromCharCode(
                         view.getUint8(offset + 4),
                         view.getUint8(offset + 5),
@@ -355,53 +413,64 @@
                         view.getUint8(offset + 7)
                     );
 
-                    if (size === 1) {
-                        offset += 16;
-                        continue;
-                    }
-                    if (size < 8) break;
-
-                    if (type === 'moov') {
-                        let moovOffset = offset + 8;
-                        const moovEnd = offset + size;
-                        while (moovOffset < moovEnd - 8) {
-                            const subSize = view.getUint32(moovOffset);
+                    if (type === 'moov' || type === 'mvhd') {
+                        let innerOffset = (type === 'moov') ? offset + 8 : offset;
+                        const innerEnd = offset + size;
+                        while (innerOffset < innerEnd - 8 && innerOffset < buffer.byteLength - 8) {
+                            const subSize = view.getUint32(innerOffset);
                             const subType = String.fromCharCode(
-                                view.getUint8(moovOffset + 4),
-                                view.getUint8(moovOffset + 5),
-                                view.getUint8(moovOffset + 6),
-                                view.getUint8(moovOffset + 7)
+                                view.getUint8(innerOffset + 4),
+                                view.getUint8(innerOffset + 5),
+                                view.getUint8(innerOffset + 6),
+                                view.getUint8(innerOffset + 7)
                             );
+
                             if (subType === 'mvhd') {
-                                const version = view.getUint8(moovOffset + 8);
+                                const version = view.getUint8(innerOffset + 8);
                                 let creationTime;
                                 if (version === 1) {
-                                    const high = view.getUint32(moovOffset + 12);
-                                    const low = view.getUint32(moovOffset + 16);
+                                    const high = view.getUint32(innerOffset + 12);
+                                    const low = view.getUint32(innerOffset + 16);
                                     creationTime = high * 0x100000000 + low;
                                 } else {
-                                    creationTime = view.getUint32(moovOffset + 12);
+                                    creationTime = view.getUint32(innerOffset + 12);
                                 }
-                                // QuickTime Epoch (1904) -> Unix Epoch (1970) conversion
                                 if (creationTime > 2082844800) {
                                     const unixEpochMs = (creationTime - 2082844800) * 1000;
-                                    const date = new Date(unixEpochMs);
-                                    if (!isNaN(date.getTime()) && date.getFullYear() > 2000) {
-                                        return date;
+                                    const parsedDate = new Date(unixEpochMs);
+                                    if (!isNaN(parsedDate.getTime()) && parsedDate.getFullYear() > 2000) {
+                                        return parsedDate;
                                     }
                                 }
                             }
-                            moovOffset += (subSize === 1) ? 16 : (subSize || 8);
+                            innerOffset += (subSize === 1) ? 16 : (subSize > 0 ? subSize : 8);
                         }
                     }
-                    offset += size;
+                    offset += (size === 1) ? 16 : size;
                 }
-            } catch (e) {
-                console.warn('Metadata parse warning:', e);
+            } catch (err) {
+                // Return null to fallback safely
             }
+            return null;
+        }
 
-            // Fallback to file modified date if metadata parse fails
-            return new Date(file.lastModified || Date.now());
+        // Helper to reset video seek position safely
+        function resetVideoSeek(video) {
+            return new Promise((resolve) => {
+                if (Math.abs(video.currentTime) < 0.05 && !video.seeking) {
+                    resolve();
+                    return;
+                }
+                const onSeeked = () => {
+                    video.removeEventListener('seeked', onSeeked);
+                    resolve();
+                };
+                video.addEventListener('seeked', onSeeked);
+                video.currentTime = 0;
+                
+                // Fallback timeout in case seeked event doesn't trigger
+                setTimeout(resolve, 300);
+            });
         }
 
         // Handle File Selection
@@ -411,10 +480,11 @@
 
             showToast(`${files.length} 件の動画を読み込み中...`, 'info');
             let successCount = 0;
+            let failedFiles = [];
 
             for (const file of files) {
                 if (!file || file.size === 0) {
-                    showToast('iCloud上の動画は端末に保存してから選択してください', 'error');
+                    failedFiles.push(file ? file.name : '不明なファイル');
                     continue;
                 }
 
@@ -422,22 +492,36 @@
                     const objectUrl = URL.createObjectURL(file);
                     const videoElem = document.createElement('video');
                     
-                    videoElem.preload = 'metadata';
+                    videoElem.preload = 'auto';
                     videoElem.playsInline = true;
                     videoElem.muted = true;
                     videoElem.autoplay = false;
                     videoElem.setAttribute('playsinline', '');
                     videoElem.setAttribute('webkit-playsinline', '');
+                    
+                    hiddenVideoContainer.appendChild(videoElem);
 
-                    const loadPromise = new Promise((resolve) => {
-                        const onLoaded = () => resolve(true);
-                        videoElem.addEventListener('loadedmetadata', onLoaded);
-                        setTimeout(() => resolve(true), 3000);
+                    const loadPromise = new Promise((resolve, reject) => {
+                        let resolved = false;
+                        const done = (success) => {
+                            if (!resolved) {
+                                resolved = true;
+                                if (success) resolve(true);
+                                else reject(new Error('Video load failed'));
+                            }
+                        };
+                        videoElem.addEventListener('loadedmetadata', () => done(true));
+                        videoElem.addEventListener('error', () => done(false));
+                        setTimeout(() => done(false), 5000);
                     });
 
                     videoElem.src = objectUrl;
                     videoElem.load();
+                    
                     await loadPromise;
+
+                    // Ensure first frame seeking for thumbnail preview
+                    videoElem.currentTime = 0.1;
 
                     const fileDate = await getVideoCreationDate(file);
                     
@@ -459,11 +543,13 @@
                         timestamp: fileDate.getTime(),
                         duration: videoElem.duration && !isNaN(videoElem.duration) ? videoElem.duration : 3,
                         dateLabel: dateStr,
-                        timeLabel: timeStr
+                        timeLabel: timeStr,
+                        sourceNode: null
                     });
                     successCount++;
                 } catch (err) {
                     console.error('Video loading error:', err);
+                    failedFiles.push(file.name);
                 }
             }
 
@@ -471,8 +557,14 @@
             renderClipList();
             videoInput.value = '';
 
-            if (successCount > 0) {
+            if (failedFiles.length > 0) {
+                showToast(`${failedFiles.join(', ')} を読み込めませんでした。`, 'error');
+            } else if (successCount > 0) {
                 showToast(`${successCount} 件の動画の準備が完了しました`, 'success');
+            }
+
+            if (uploadedClips.length > 0) {
+                updateLivePreview();
             }
         });
 
@@ -488,6 +580,7 @@
                 generateBtn.disabled = true;
                 previewBtn.disabled = true;
                 canvasOverlayText.classList.remove('hidden');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
                 return;
             }
 
@@ -498,13 +591,23 @@
             previewBtn.disabled = false;
 
             uploadedClips.forEach((clip, index) => {
+                const isActive = index === activeClipIndex;
                 const item = document.createElement('div');
-                item.className = 'flex flex-col gap-1 p-2.5 bg-slate-900/90 border border-slate-800 rounded-xl hover:border-slate-700 transition-all text-xs';
+                item.className = `flex flex-col gap-1 p-2.5 bg-slate-900/90 border ${isActive ? 'border-rose-500 shadow-md shadow-rose-500/10' : 'border-slate-800'} rounded-xl hover:border-slate-700 transition-all text-xs cursor-pointer`;
+                
+                item.onclick = (e) => {
+                    // Prevent triggering selection when editing text inputs
+                    if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+                    activeClipIndex = index;
+                    renderClipList();
+                    updateLivePreview();
+                };
+
                 item.innerHTML = `
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2 overflow-hidden">
-                            <span class="w-5 h-5 rounded-md bg-slate-800 text-slate-400 flex items-center justify-center text-[10px] font-bold shrink-0">${index + 1}</span>
-                            <p class="font-medium text-slate-200 truncate max-w-[150px] sm:max-w-[180px]">${clip.name}</p>
+                            <span class="w-5 h-5 rounded-md ${isActive ? 'bg-rose-500 text-white' : 'bg-slate-800 text-slate-400'} flex items-center justify-center text-[10px] font-bold shrink-0">${index + 1}</span>
+                            <p class="font-medium ${isActive ? 'text-white' : 'text-slate-200'} truncate max-w-[150px] sm:max-w-[180px]">${clip.name}</p>
                         </div>
                         <button onclick="removeClip('${clip.id}')" class="text-slate-500 hover:text-rose-400 p-1 transition-colors">
                             <i class="fa-solid fa-xmark text-sm"></i>
@@ -521,33 +624,50 @@
 
         function updateClipDate(id, newDate) {
             const clip = uploadedClips.find(c => c.id === id);
-            if (clip) clip.dateLabel = newDate.trim();
+            if (clip) {
+                clip.dateLabel = newDate.trim();
+                updateLivePreview();
+            }
         }
 
         function updateClipTime(id, newTime) {
             const clip = uploadedClips.find(c => c.id === id);
-            if (clip) clip.timeLabel = newTime.trim();
+            if (clip) {
+                clip.timeLabel = newTime.trim();
+                updateLivePreview();
+            }
         }
 
         function removeClip(id) {
             const index = uploadedClips.findIndex(c => c.id === id);
             if (index !== -1) {
-                if (uploadedClips[index].objectUrl) {
-                    URL.revokeObjectURL(uploadedClips[index].objectUrl);
+                const clip = uploadedClips[index];
+                if (clip.objectUrl) URL.revokeObjectURL(clip.objectUrl);
+                if (clip.video && clip.video.parentNode) {
+                    clip.video.parentNode.removeChild(clip.video);
                 }
                 uploadedClips.splice(index, 1);
+                if (activeClipIndex >= uploadedClips.length) {
+                    activeClipIndex = Math.max(0, uploadedClips.length - 1);
+                }
                 renderClipList();
+                updateLivePreview();
             }
         }
 
         function clearAllClips() {
             uploadedClips.forEach(c => {
                 if (c.objectUrl) URL.revokeObjectURL(c.objectUrl);
+                if (c.video && c.video.parentNode) {
+                    c.video.parentNode.removeChild(c.video);
+                }
             });
             uploadedClips = [];
+            activeClipIndex = 0;
             renderClipList();
         }
 
+        // Draw video frame & overlays onto preview canvas
         function drawVideoFrame(video, clip, clipIndex) {
             const cw = canvas.width;
             const ch = canvas.height;
@@ -725,6 +845,7 @@
             ctx.restore();
         }
 
+        // Preview Button Action
         previewBtn.addEventListener('click', async () => {
             if (isProcessing || uploadedClips.length === 0) return;
             canvasOverlayText.classList.add('hidden');
@@ -735,9 +856,13 @@
             for (let i = 0; i < uploadedClips.length; i++) {
                 const clip = uploadedClips[i];
                 const video = clip.video;
-                video.currentTime = 0;
 
-                await video.play().catch(() => {});
+                await resetVideoSeek(video);
+                try {
+                    await video.play();
+                } catch(e) {
+                    console.warn('Preview play notice:', e);
+                }
 
                 const dur = Math.min(maxClipDur, clip.duration);
                 const startTime = Date.now();
@@ -846,17 +971,18 @@
                 progressStatus.textContent = `クリップ ${i + 1} / ${totalClips} を書き出し中...`;
                 progressBar.style.width = `${((i) / totalClips) * 100}%`;
 
-                video.currentTime = 0;
+                await resetVideoSeek(video);
                 video.muted = !keepAudio;
 
-                let mediaSourceNode = null;
+                // Reuse cached audio node to avoid InvalidStateError on repeated exports
                 if (keepAudio && audioCtx && audioDestination) {
                     try {
-                        // Connect element to audio destination graph
-                        mediaSourceNode = audioCtx.createMediaElementSource(video);
-                        mediaSourceNode.connect(audioDestination);
+                        if (!clip.sourceNode) {
+                            clip.sourceNode = audioCtx.createMediaElementSource(video);
+                        }
+                        clip.sourceNode.connect(audioDestination);
                     } catch (err) {
-                        // Node might already be connected
+                        // Node connected or fallback handled
                     }
                 }
 
@@ -868,21 +994,24 @@
 
                 const targetDuration = Math.min(maxClipDur, clip.duration);
                 const startTime = Date.now();
+                // Timeout safeguard (target duration + 3 seconds extra buffer time)
+                const timeoutLimitMs = (targetDuration + 3.0) * 1000;
 
                 await new Promise((resolve) => {
                     let frameReqId = null;
 
                     function renderStep() {
-                        const elapsed = (Date.now() - startTime) / 1000;
+                        const elapsedMs = Date.now() - startTime;
+                        const elapsedSec = elapsedMs / 1000;
                         drawVideoFrame(video, clip, i);
 
-                        if (elapsed < targetDuration && !video.ended) {
+                        if (elapsedSec < targetDuration && !video.ended && elapsedMs < timeoutLimitMs) {
                             frameReqId = requestAnimationFrame(renderStep);
                         } else {
                             if (frameReqId) cancelAnimationFrame(frameReqId);
                             video.pause();
-                            if (mediaSourceNode) {
-                                try { mediaSourceNode.disconnect(); } catch(e){}
+                            if (clip.sourceNode) {
+                                try { clip.sourceNode.disconnect(); } catch(e){}
                             }
                             resolve();
                         }
