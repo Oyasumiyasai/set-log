@@ -42,8 +42,8 @@
     </style>
 </head>
 <body class="min-h-screen pb-12 text-stone-700 flex flex-col items-center">
-    <!-- Hidden container for off-screen video elements (prevents Safari buffering stalls) -->
-    <div id="hiddenVideoContainer" style="display:none; width:0; height:0; overflow:hidden;" aria-hidden="true"></div>
+    <!-- Hidden container for off-screen video elements (prevents Safari/Chrome buffering stalls) -->
+    <div id="hiddenVideoContainer" class="fixed -left-[9999px] top-0 w-1 h-1 overflow-hidden pointer-events-none opacity-0" aria-hidden="true"></div>
 
     <!-- Header -->
     <header class="w-full border-b border-rose-100/80 bg-white/70 backdrop-blur-md sticky top-0 z-50">
@@ -109,13 +109,61 @@
                     <i class="fa-solid fa-sliders text-rose-400"></i> 自動編集設定
                 </h3>
 
+                <!-- BGM & BPM Section -->
+                <div class="p-3 bg-white/70 border border-rose-200/80 rounded-2xl space-y-3 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                            <i class="fa-solid fa-music text-rose-400"></i> BGM音楽ファイル
+                        </label>
+                        <span id="bpmBadge" class="text-[10px] font-bold bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full border border-stone-200">BPM: 未検出</span>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <label for="bgmInput" class="flex-1 cursor-pointer py-2 px-3 bg-rose-50 hover:bg-rose-100/70 border border-rose-200 rounded-xl text-xs font-semibold text-rose-600 text-center transition-colors truncate">
+                            <i class="fa-solid fa-file-audio mr-1"></i> <span id="bgmFileName">BGMを選択 (.mp3 / .wav)</span>
+                            <input type="file" id="bgmInput" accept="audio/*" class="hidden">
+                        </label>
+                        <button id="clearBgmBtn" onclick="clearBgm()" class="hidden py-2 px-3 border border-stone-200 rounded-xl text-xs text-stone-500 hover:text-rose-500 hover:bg-white transition-colors">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+
+                    <div id="bpmOptions" class="hidden space-y-2 pt-1 border-t border-rose-100">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold text-stone-600">カットタイミング</span>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="useBpmSync" checked class="sr-only peer">
+                                <div class="w-9 h-5 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-rose-400"></div>
+                            </label>
+                        </div>
+
+                        <div id="bpmBeatSelectContainer" class="grid grid-cols-3 sm:grid-cols-6 gap-1 pt-1">
+                            <button type="button" onclick="setBpmBeat(1)" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600">1拍</button>
+                            <button type="button" onclick="setBpmBeat(2)" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600">2拍</button>
+                            <button type="button" onclick="setBpmBeat(4)" class="bpm-beat-btn active py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-rose-400 border-rose-400 text-white shadow-sm">4拍</button>
+                            <button type="button" onclick="setBpmBeat(8)" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600">8拍</button>
+                            <button type="button" onclick="setBpmBeat('random')" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600">ランダム</button>
+                            <button type="button" onclick="setBpmBeat('song-fit')" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600 col-span-3 sm:col-span-1 border-rose-300 text-rose-600 bg-rose-50/50">1曲フィット(1〜16拍)</button>
+                        </div>
+                    </div>
+
+                    <!-- BGM Volume Slider -->
+                    <div id="bgmVolumeContainer" class="hidden space-y-1 pt-1">
+                        <div class="flex justify-between text-[11px] font-bold text-stone-500">
+                            <span>BGM音量</span>
+                            <span id="bgmVolumeVal">70%</span>
+                        </div>
+                        <input type="range" id="bgmVolume" min="0" max="1" step="0.05" value="0.7" class="w-full h-1.5 bg-rose-100 rounded-lg appearance-none cursor-pointer accent-rose-400">
+                    </div>
+                </div>
+
                 <div class="space-y-3">
-                    <div>
+                    <div id="manualDurationContainer">
                         <label class="text-xs font-bold text-stone-600 flex justify-between mb-1.5">
                             <span>1クリップあたりのカット秒数</span>
                             <span id="durationValue" class="text-rose-500 font-bold">2.0 秒</span>
                         </label>
-                        <input type="range" id="clipDuration" min="1" max="5" step="0.5" value="2" class="w-full h-2 bg-rose-100/80 rounded-lg appearance-none cursor-pointer accent-rose-400">
+                        <input type="range" id="clipDuration" min="0.5" max="5" step="0.1" value="2" class="w-full h-2 bg-rose-100/80 rounded-lg appearance-none cursor-pointer accent-rose-400">
                     </div>
 
                     <div class="grid grid-cols-2 gap-3 pt-1">
@@ -164,7 +212,6 @@
                         </div>
                     </div>
 
-                    <!-- フォントの種類 & フォントサイズ -->
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="text-xs font-bold text-stone-600 block mb-1.5">フォントの種類</label>
@@ -234,7 +281,7 @@
                 </h3>
 
                 <!-- Canvas Container -->
-                <div class="relative w-full max-w-[320px] aspect-[9/16] bg-stone-900 rounded-3xl overflow-hidden border-4 border-white shadow-xl shadow-rose-200/30 flex items-center justify-center">
+                <div id="canvasContainer" class="relative w-full max-w-[320px] aspect-[9/16] bg-stone-900 rounded-3xl overflow-hidden border-4 border-white shadow-xl shadow-rose-200/30 flex items-center justify-center transition-all duration-300">
                     <canvas id="previewCanvas" class="w-full h-full object-contain"></canvas>
                     
                     <div id="canvasOverlayText" class="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-stone-900/85 backdrop-blur-sm pointer-events-none">
@@ -298,6 +345,18 @@
         const stampFontSizeInput = document.getElementById('stampFontSize');
         const videoFilterInput = document.getElementById('videoFilter');
         const keepAudioInput = document.getElementById('keepAudio');
+
+        // BGM & BPM DOM
+        const bgmInput = document.getElementById('bgmInput');
+        const bgmFileName = document.getElementById('bgmFileName');
+        const clearBgmBtn = document.getElementById('clearBgmBtn');
+        const bpmBadge = document.getElementById('bpmBadge');
+        const bpmOptions = document.getElementById('bpmOptions');
+        const useBpmSync = document.getElementById('useBpmSync');
+        const bgmVolumeContainer = document.getElementById('bgmVolumeContainer');
+        const bgmVolumeInput = document.getElementById('bgmVolume');
+        const bgmVolumeVal = document.getElementById('bgmVolumeVal');
+        const manualDurationContainer = document.getElementById('manualDurationContainer');
         
         const clipList = document.getElementById('clipList');
         const clipCount = document.getElementById('clipCount');
@@ -307,6 +366,7 @@
         const previewBtn = document.getElementById('previewBtn');
 
         const canvas = document.getElementById('previewCanvas');
+        const canvasContainer = document.getElementById('canvasContainer');
         const ctx = canvas.getContext('2d');
         const canvasOverlayText = document.getElementById('canvasOverlayText');
         const encodingProgress = document.getElementById('encodingProgress');
@@ -323,7 +383,266 @@
         let isProcessing = false;
         let activeClipIndex = 0; // Currently previewed clip index
 
-        // Toast notification helper
+        // BGM State
+        let bgmAudioBuffer = null;
+        let bgmAudioElement = null;
+        let detectedBpm = 0;
+        let selectedBeats = 4; // 1, 2, 4, 8, 16拍 または 'random', 'song-fit'
+
+        // BGM File Handler
+        bgmInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            bgmFileName.textContent = file.name;
+            clearBgmBtn.classList.remove('hidden');
+            bpmBadge.textContent = 'BPM: 解析中...';
+            bpmBadge.className = 'text-[10px] font-bold bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full border border-amber-200 animate-pulse';
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                const audioCtx = new AudioContextClass();
+                
+                bgmAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                
+                if (bgmAudioElement) {
+                    bgmAudioElement.pause();
+                }
+                bgmAudioElement = new Audio(URL.createObjectURL(file));
+                bgmAudioElement.loop = true;
+
+                detectedBpm = await detectBpmFromBuffer(bgmAudioBuffer);
+                audioCtx.close();
+
+                bpmBadge.textContent = `BPM: ${detectedBpm}`;
+                bpmBadge.className = 'text-[10px] font-bold bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full border border-rose-200';
+                bpmOptions.classList.remove('hidden');
+                bgmVolumeContainer.classList.remove('hidden');
+
+                updateBeatDuration();
+            } catch (err) {
+                console.error('BGM processing error:', err);
+                bpmBadge.textContent = 'BPM: 検出失敗 (標準カット)';
+                bpmBadge.className = 'text-[10px] font-bold bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full border border-stone-200';
+                bpmOptions.classList.remove('hidden');
+                bgmVolumeContainer.classList.remove('hidden');
+            }
+        });
+
+        // Automatic Beat/Tempo detection from Audio Buffer
+        async function detectBpmFromBuffer(buffer) {
+            try {
+                const pcmData = buffer.getChannelData(0);
+                const sampleRate = buffer.sampleRate;
+                
+                const step = Math.floor(sampleRate / 1000); // 1ms windows
+                const windowCount = Math.floor(pcmData.length / step);
+                const energies = new Float32Array(windowCount);
+
+                for (let i = 0; i < windowCount; i++) {
+                    let sum = 0;
+                    const start = i * step;
+                    for (let j = 0; j < step; j++) {
+                        const val = pcmData[start + j] || 0;
+                        sum += val * val;
+                    }
+                    energies[i] = Math.sqrt(sum / step);
+                }
+
+                const minLag = 333; // ~180 BPM
+                const maxLag = 1000; // ~60 BPM
+                let maxCorrelation = -1;
+                let bestLag = 500; // default 120 bpm
+
+                const testLength = Math.min(energies.length - maxLag, 10000);
+                for (let lag = minLag; lag <= maxLag; lag += 2) {
+                    let correlation = 0;
+                    for (let i = 0; i < testLength; i++) {
+                        correlation += energies[i] * energies[i + lag];
+                    }
+                    if (correlation > maxCorrelation) {
+                        maxCorrelation = correlation;
+                        bestLag = lag;
+                    }
+                }
+
+                const calculatedBpm = Math.round(60000 / bestLag);
+                if (calculatedBpm >= 60 && calculatedBpm <= 180) {
+                    return calculatedBpm;
+                }
+                return 120;
+            } catch (e) {
+                return 120;
+            }
+        }
+
+        function clearBgm() {
+            bgmInput.value = '';
+            bgmFileName.textContent = 'BGMを選択 (.mp3 / .wav)';
+            clearBgmBtn.classList.add('hidden');
+            bpmBadge.textContent = 'BPM: 未検出';
+            bpmBadge.className = 'text-[10px] font-bold bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full border border-stone-200';
+            bpmOptions.classList.add('hidden');
+            bgmVolumeContainer.classList.add('hidden');
+            bgmAudioBuffer = null;
+            if (bgmAudioElement) {
+                bgmAudioElement.pause();
+                bgmAudioElement = null;
+            }
+            detectedBpm = 0;
+            toggleBpmSyncMode();
+        }
+
+        function setBpmBeat(beat) {
+            selectedBeats = beat;
+            document.querySelectorAll('.bpm-beat-btn').forEach(btn => {
+                const isSelected = (beat === 'random' && btn.textContent.includes('ランダム')) ||
+                                   (beat === 'song-fit' && btn.textContent.includes('1曲フィット')) ||
+                                   (beat !== 'random' && beat !== 'song-fit' && btn.textContent.includes(`${beat}拍`));
+                btn.className = isSelected 
+                    ? 'bpm-beat-btn active py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-rose-400 border-rose-400 text-white shadow-sm'
+                    : 'bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600';
+            });
+            updateBeatDuration();
+        }
+
+        function updateBeatDuration() {
+            if (useBpmSync.checked && detectedBpm > 0) {
+                const secPerBeat = 60 / detectedBpm;
+                if (selectedBeats === 'song-fit') {
+                    const totalBeats = bgmAudioBuffer ? Math.floor((bgmAudioBuffer.duration * detectedBpm) / 60) : 0;
+                    durationValue.textContent = `1曲フィット (全${totalBeats}拍 / 1〜16拍自動配分)`;
+                } else if (selectedBeats === 'random') {
+                    durationValue.textContent = `ランダム (1/2/4/8拍可変 @ ${detectedBpm}BPM)`;
+                } else {
+                    const targetSec = (secPerBeat * selectedBeats).toFixed(2);
+                    clipDurationInput.value = targetSec;
+                    durationValue.textContent = `${targetSec} 秒 (${selectedBeats}拍 @ ${detectedBpm}BPM)`;
+                }
+            }
+        }
+
+        // Calculate clip durations and perform clip sampling/fitting for 1 full song
+        function calculateSongFitSchedule() {
+            if (uploadedClips.length === 0) return [];
+
+            if (!useBpmSync.checked || detectedBpm <= 0 || selectedBeats !== 'song-fit' || !bgmAudioBuffer) {
+                return uploadedClips.map((clip, idx) => ({
+                    clip: clip,
+                    originalIndex: idx,
+                    duration: getTargetClipDuration()
+                }));
+            }
+
+            const secPerBeat = 60 / detectedBpm;
+            const songDuration = bgmAudioBuffer.duration;
+            const totalBeats = Math.floor((songDuration * detectedBpm) / 60);
+
+            let availableClips = [...uploadedClips];
+            
+            // Thin out clips if too many
+            if (availableClips.length > totalBeats) {
+                showToast(`動画が多いため、1曲（${totalBeats}拍）に収まるよう${availableClips.length - totalBeats}件間引きます`, 'info');
+                const sampled = [];
+                const step = availableClips.length / totalBeats;
+                for (let i = 0; i < totalBeats; i++) {
+                    const index = Math.floor(i * step);
+                    sampled.push(availableClips[index]);
+                }
+                availableClips = sampled;
+            }
+
+            const numClips = availableClips.length;
+            if (numClips === 0) return [];
+
+            // Balanced Beat Allocation Algorithm across the whole song
+            // Allowed beat options: [1, 2, 4, 8, 16]
+            const beatLevels = [1, 2, 4, 8, 16];
+            let assignedBeats = new Array(numClips).fill(4); // Start all at 4 beats
+            let currentSum = numClips * 4;
+
+            let attempts = 0;
+            while (currentSum !== totalBeats && attempts < 2000) {
+                attempts++;
+                const idx = Math.floor(Math.random() * numClips);
+                const current = assignedBeats[idx];
+                const currentLevelIdx = beatLevels.indexOf(current);
+
+                if (currentSum < totalBeats) {
+                    if (currentLevelIdx < beatLevels.length - 1) {
+                        const nextVal = beatLevels[currentLevelIdx + 1];
+                        const diff = nextVal - current;
+                        if (currentSum + diff <= totalBeats) {
+                            assignedBeats[idx] = nextVal;
+                            currentSum += diff;
+                        }
+                    }
+                } else if (currentSum > totalBeats) {
+                    if (currentLevelIdx > 0) {
+                        const nextVal = beatLevels[currentLevelIdx - 1];
+                        const diff = current - nextVal;
+                        if (currentSum - diff >= totalBeats) {
+                            assignedBeats[idx] = nextVal;
+                            currentSum -= diff;
+                        }
+                    }
+                }
+            }
+
+            // Build schedule with calculated beats
+            const schedule = [];
+            for (let i = 0; i < numClips; i++) {
+                const clip = availableClips[i];
+                const beats = assignedBeats[i];
+                const durationSec = Math.min(beats * secPerBeat, clip.duration);
+
+                schedule.push({
+                    clip: clip,
+                    originalIndex: uploadedClips.indexOf(clip),
+                    allocatedBeats: beats,
+                    duration: durationSec
+                });
+            }
+
+            return schedule;
+        }
+
+        function getTargetClipDuration() {
+            if (useBpmSync.checked && detectedBpm > 0) {
+                const secPerBeat = 60 / detectedBpm;
+                let beats = selectedBeats;
+                if (beats === 'random') {
+                    const beatOptions = [1, 2, 4, 8, 16];
+                    beats = beatOptions[Math.floor(Math.random() * beatOptions.length)];
+                } else if (beats === 'song-fit') {
+                    beats = 4;
+                }
+                return secPerBeat * beats;
+            } else {
+                return parseFloat(clipDurationInput.value);
+            }
+        }
+
+        function toggleBpmSyncMode() {
+            if (useBpmSync.checked && detectedBpm > 0) {
+                manualDurationContainer.classList.add('opacity-75');
+                updateBeatDuration();
+            } else {
+                manualDurationContainer.classList.remove('opacity-75');
+                durationValue.textContent = `${parseFloat(clipDurationInput.value).toFixed(1)} 秒`;
+            }
+        }
+
+        useBpmSync.addEventListener('change', toggleBpmSyncMode);
+
+        bgmVolumeInput.addEventListener('input', (e) => {
+            bgmVolumeVal.textContent = `${Math.round(e.target.value * 100)}%`;
+            if (bgmAudioElement) {
+                bgmAudioElement.volume = e.target.value;
+            }
+        });
+
         function showToast(message, type = 'info') {
             const toast = document.getElementById('toast');
             const toastMsg = document.getElementById('toastMsg');
@@ -350,7 +669,6 @@
             }
         }
 
-        // Live static frame preview update
         function updateLivePreview() {
             if (uploadedClips.length === 0 || isProcessing) return;
             if (activeClipIndex >= uploadedClips.length) activeClipIndex = 0;
@@ -362,12 +680,14 @@
             }
         }
 
-        // Update Slider UI
         clipDurationInput.addEventListener('input', (e) => {
+            if (useBpmSync.checked) {
+                useBpmSync.checked = false;
+                toggleBpmSyncMode();
+            }
             durationValue.textContent = `${parseFloat(e.target.value).toFixed(1)} 秒`;
         });
 
-        // Update Canvas Aspect Ratio Resolution & Redraw Preview
         function updateCanvasDimensions() {
             const ratio = aspectRatioInput.value;
             ratioBadge.textContent = ratio;
@@ -375,12 +695,21 @@
             if (ratio === '9:16') {
                 canvas.width = 720;
                 canvas.height = 1280;
+                if (canvasContainer) {
+                    canvasContainer.className = 'relative w-full max-w-[300px] aspect-[9/16] bg-stone-900 rounded-3xl overflow-hidden border-4 border-white shadow-xl shadow-rose-200/30 flex items-center justify-center transition-all duration-300';
+                }
             } else if (ratio === '16:9') {
                 canvas.width = 1280;
                 canvas.height = 720;
+                if (canvasContainer) {
+                    canvasContainer.className = 'relative w-full max-w-[480px] aspect-[16/9] bg-stone-900 rounded-3xl overflow-hidden border-4 border-white shadow-xl shadow-rose-200/30 flex items-center justify-center transition-all duration-300';
+                }
             } else if (ratio === '1:1') {
                 canvas.width = 1080;
                 canvas.height = 1080;
+                if (canvasContainer) {
+                    canvasContainer.className = 'relative w-full max-w-[340px] aspect-[1/1] bg-stone-900 rounded-3xl overflow-hidden border-4 border-white shadow-xl shadow-rose-200/30 flex items-center justify-center transition-all duration-300';
+                }
             }
             updateLivePreview();
         }
@@ -395,7 +724,6 @@
 
         updateCanvasDimensions();
 
-        // Helper: read array buffer slice
         async function readBufferSlice(file, start, length) {
             try {
                 const slice = file.slice(start, Math.min(file.size, start + length));
@@ -405,17 +733,14 @@
             }
         }
 
-        // MP4 / QuickTime MOV Atom parser to extract actual shooting time (mvhd box)
         async function getVideoCreationDate(file) {
             try {
-                // Try reading start 4MB first, then end 4MB if moov atom is at file end (common in iPhone videos)
                 let buffer = await readBufferSlice(file, 0, 4 * 1024 * 1024);
                 if (!buffer) return new Date(file.lastModified || Date.now());
 
                 let date = parseMoovDate(buffer);
                 if (date) return date;
 
-                // Check end of file if not found in head
                 if (file.size > 4 * 1024 * 1024) {
                     const tailStart = Math.max(0, file.size - 4 * 1024 * 1024);
                     buffer = await readBufferSlice(file, tailStart, 4 * 1024 * 1024);
@@ -481,13 +806,10 @@
                     }
                     offset += (size === 1) ? 16 : size;
                 }
-            } catch (err) {
-                // Return null to fallback safely
-            }
+            } catch (err) {}
             return null;
         }
 
-        // Helper to reset video seek position safely
         function resetVideoSeek(video) {
             return new Promise((resolve) => {
                 if (Math.abs(video.currentTime) < 0.05 && !video.seeking) {
@@ -501,12 +823,10 @@
                 video.addEventListener('seeked', onSeeked);
                 video.currentTime = 0;
                 
-                // Fallback timeout in case seeked event doesn't trigger
                 setTimeout(resolve, 300);
             });
         }
 
-        // Handle File Selection
         videoInput.addEventListener('change', async (e) => {
             const files = Array.from(e.target.files);
             if (!files.length) return;
@@ -539,22 +859,39 @@
                         const done = (success) => {
                             if (!resolved) {
                                 resolved = true;
-                                if (success) resolve(true);
-                                else reject(new Error('Video load failed'));
+                                if (success) {
+                                    resolve(true);
+                                } else {
+                                    const errDetails = videoElem.error ? `(code ${videoElem.error.code})` : '(timeout)';
+                                    reject(new Error(`Video load failed ${errDetails}`));
+                                }
                             }
                         };
-                        videoElem.addEventListener('loadedmetadata', () => done(true));
-                        videoElem.addEventListener('error', () => done(false));
-                        setTimeout(() => done(false), 5000);
+
+                        if (videoElem.readyState >= 1) {
+                            done(true);
+                            return;
+                        }
+
+                        videoElem.addEventListener('loadedmetadata', () => done(true), { once: true });
+                        videoElem.addEventListener('loadeddata', () => done(true), { once: true });
+                        videoElem.addEventListener('canplay', () => done(true), { once: true });
+                        videoElem.addEventListener('error', () => done(false), { once: true });
+                        
+                        setTimeout(() => {
+                            if (videoElem.readyState >= 1) {
+                                done(true);
+                            } else {
+                                done(false);
+                            }
+                        }, 15000);
                     });
 
                     videoElem.src = objectUrl;
                     videoElem.load();
                     
                     await loadPromise;
-
-                    // Ensure first frame seeking for thumbnail preview
-                    videoElem.currentTime = 0.1;
+                    try { videoElem.currentTime = 0.1; } catch(e){}
 
                     const fileDate = await getVideoCreationDate(file);
                     
@@ -601,7 +938,6 @@
             }
         });
 
-        // Render Clips List UI
         function renderClipList() {
             clipList.innerHTML = '';
             clipCount.textContent = `${uploadedClips.length} 件`;
@@ -629,7 +965,6 @@
                 item.className = `flex flex-col gap-1 p-2.5 bg-white/80 border ${isActive ? 'border-rose-400 shadow-sm ring-2 ring-rose-300/30' : 'border-rose-100/80'} rounded-xl hover:border-rose-300 transition-all text-xs cursor-pointer`;
                 
                 item.onclick = (e) => {
-                    // Prevent triggering selection when editing text inputs
                     if (e.target.tagName === 'INPUT' || e.target.closest('button')) return;
                     activeClipIndex = index;
                     renderClipList();
@@ -700,7 +1035,6 @@
             renderClipList();
         }
 
-        // Draw video frame & overlays onto preview canvas
         function drawVideoFrame(video, clip, clipIndex) {
             const cw = canvas.width;
             const ch = canvas.height;
@@ -728,7 +1062,6 @@
                 dy = (ch - dh) / 2;
             }
 
-            // Apply Video Filter
             ctx.save();
             const filterType = videoFilterInput ? videoFilterInput.value : 'none';
             if (filterType === 'monochrome') {
@@ -748,9 +1081,8 @@
             }
 
             ctx.drawImage(video, dx, dy, dw, dh);
-            ctx.restore(); // Restore filter state so stamp is clean
+            ctx.restore();
 
-            // Stamp Position & Text Format Processing
             const stampPosition = showTimestampInput.value;
             if (stampPosition === 'none' || !clip) return;
 
@@ -772,7 +1104,6 @@
             ctx.save();
             const style = stampStyleInput.value;
             const fontScale = parseFloat(stampFontSizeInput ? stampFontSizeInput.value : 1.0);
-            /* STREAMING_CHUNK:Setting default base font size to 200% scale (cw * 0.09)... */
             const baseFontSize = Math.round(cw * 0.09 * fontScale);
 
             const selectedFont = stampFontInput ? stampFontInput.value : 'inter';
@@ -835,7 +1166,6 @@
             const tx = rx + paddingX * 0.7;
             const ty = ry + baseFontSize;
 
-            // Render Styles
             if (style === 'setlog') {
                 ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
                 ctx.beginPath();
@@ -897,16 +1227,22 @@
             ctx.restore();
         }
 
-        // Preview Button Action
         previewBtn.addEventListener('click', async () => {
             if (isProcessing || uploadedClips.length === 0) return;
             canvasOverlayText.classList.add('hidden');
             scrollToPreviewOnMobile();
 
-            const maxClipDur = parseFloat(clipDurationInput.value);
+            const schedule = calculateSongFitSchedule();
 
-            for (let i = 0; i < uploadedClips.length; i++) {
-                const clip = uploadedClips[i];
+            if (bgmAudioElement) {
+                bgmAudioElement.currentTime = 0;
+                bgmAudioElement.volume = bgmVolumeInput.value;
+                try { await bgmAudioElement.play(); } catch(e){}
+            }
+
+            for (let i = 0; i < schedule.length; i++) {
+                const item = schedule[i];
+                const clip = item.clip;
                 const video = clip.video;
 
                 await resetVideoSeek(video);
@@ -916,13 +1252,13 @@
                     console.warn('Preview play notice:', e);
                 }
 
-                const dur = Math.min(maxClipDur, clip.duration);
+                const dur = Math.min(item.duration, clip.duration);
                 const startTime = Date.now();
 
                 await new Promise((resolve) => {
                     function loop() {
                         const elapsed = (Date.now() - startTime) / 1000;
-                        drawVideoFrame(video, clip, i);
+                        drawVideoFrame(video, clip, item.originalIndex);
 
                         if (elapsed < dur && !video.ended) {
                             requestAnimationFrame(loop);
@@ -934,10 +1270,14 @@
                     loop();
                 });
             }
+
+            if (bgmAudioElement) {
+                bgmAudioElement.pause();
+            }
+
             showToast('プレビュー表示が終了しました', 'info');
         });
 
-        // MIME Type helper for cross-device support
         function getSupportedMimeType() {
             const types = [
                 'video/mp4;codecs=h264,aac',
@@ -952,7 +1292,6 @@
             return '';
         }
 
-        // Export Video Action
         generateBtn.addEventListener('click', async () => {
             if (uploadedClips.length === 0 || isProcessing) return;
 
@@ -964,18 +1303,17 @@
             resultCard.classList.add('hidden');
             scrollToPreviewOnMobile();
 
-            const maxClipDur = parseFloat(clipDurationInput.value);
+            const schedule = calculateSongFitSchedule();
             const keepAudio = keepAudioInput.checked;
 
             const fps = 30;
             const canvasStream = canvas.captureStream(fps);
             let compositeStream = new MediaStream(canvasStream.getVideoTracks());
 
-            // Audio Context setup for robust audio mixing
             let audioCtx = null;
             let audioDestination = null;
 
-            if (keepAudio) {
+            if (keepAudio || bgmAudioBuffer) {
                 try {
                     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                     if (AudioContextClass) {
@@ -991,6 +1329,24 @@
                     }
                 } catch (e) {
                     console.warn('Audio Context setup failed:', e);
+                }
+            }
+
+            let bgmSourceNode = null;
+            if (bgmAudioBuffer && audioCtx && audioDestination) {
+                try {
+                    bgmSourceNode = audioCtx.createBufferSource();
+                    bgmSourceNode.buffer = bgmAudioBuffer;
+                    bgmSourceNode.loop = false;
+
+                    const bgmGain = audioCtx.createGain();
+                    bgmGain.gain.value = parseFloat(bgmVolumeInput.value);
+                    
+                    bgmSourceNode.connect(bgmGain);
+                    bgmGain.connect(audioDestination);
+                    bgmSourceNode.start(0);
+                } catch (err) {
+                    console.warn('BGM source connect failed:', err);
                 }
             }
 
@@ -1014,10 +1370,11 @@
             });
 
             mediaRecorder.start(100);
-            const totalClips = uploadedClips.length;
+            const totalClips = schedule.length;
 
             for (let i = 0; i < totalClips; i++) {
-                const clip = uploadedClips[i];
+                const item = schedule[i];
+                const clip = item.clip;
                 const video = clip.video;
 
                 progressStatus.textContent = `クリップ ${i + 1} / ${totalClips} を書き出し中...`;
@@ -1026,16 +1383,13 @@
                 await resetVideoSeek(video);
                 video.muted = !keepAudio;
 
-                // Reuse cached audio node to avoid InvalidStateError on repeated exports
                 if (keepAudio && audioCtx && audioDestination) {
                     try {
                         if (!clip.sourceNode) {
                             clip.sourceNode = audioCtx.createMediaElementSource(video);
                         }
                         clip.sourceNode.connect(audioDestination);
-                    } catch (err) {
-                        // Node connected or fallback handled
-                    }
+                    } catch (err) {}
                 }
 
                 try {
@@ -1044,9 +1398,8 @@
                     console.warn('Video play auto-try:', err);
                 }
 
-                const targetDuration = Math.min(maxClipDur, clip.duration);
+                const targetDuration = Math.min(item.duration, clip.duration);
                 const startTime = Date.now();
-                // Timeout safeguard (target duration + 3 seconds extra buffer time)
                 const timeoutLimitMs = (targetDuration + 3.0) * 1000;
 
                 await new Promise((resolve) => {
@@ -1055,7 +1408,7 @@
                     function renderStep() {
                         const elapsedMs = Date.now() - startTime;
                         const elapsedSec = elapsedMs / 1000;
-                        drawVideoFrame(video, clip, i);
+                        drawVideoFrame(video, clip, item.originalIndex);
 
                         if (elapsedSec < targetDuration && !video.ended && elapsedMs < timeoutLimitMs) {
                             frameReqId = requestAnimationFrame(renderStep);
@@ -1074,6 +1427,10 @@
 
             progressBar.style.width = '100%';
             progressStatus.textContent = '動画ファイルを仕上げ中...';
+
+            if (bgmSourceNode) {
+                try { bgmSourceNode.stop(); } catch(e){}
+            }
 
             if (mediaRecorder.state !== 'inactive') {
                 mediaRecorder.stop();
@@ -1103,7 +1460,7 @@
             generateBtn.disabled = false;
             previewBtn.disabled = false;
 
-            showToast('自動Vlogの生成が完了しました！', 'success');
+            showToast('1曲全自動フィットVlogの生成が完了しました！', 'success');
         });
     </script>
 </body>
