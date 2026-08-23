@@ -143,7 +143,35 @@
                             <button type="button" onclick="setBpmBeat(4)" class="bpm-beat-btn active py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-rose-400 border-rose-400 text-white shadow-sm">4拍</button>
                             <button type="button" onclick="setBpmBeat(8)" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600">8拍</button>
                             <button type="button" onclick="setBpmBeat('random')" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600">ランダム</button>
-                            <button type="button" onclick="setBpmBeat('song-fit')" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600 col-span-3 sm:col-span-1 border-rose-300 text-rose-600 bg-rose-50/50">1曲フィット(1〜16拍)</button>
+                            <button type="button" onclick="setBpmBeat('song-fit')" class="bpm-beat-btn py-1 px-1 text-[10px] font-bold border rounded-lg text-center bg-white border-stone-200 text-stone-600 col-span-3 sm:col-span-1 border-rose-300 text-rose-600 bg-rose-50/50">1曲フィット</button>
+                        </div>
+
+                        <!-- 1曲フィット専用設定パネル -->
+                        <div id="songFitSettings" class="hidden pt-2 border-t border-dashed border-rose-200/80 space-y-2">
+                            <div class="text-[11px] font-bold text-stone-600 flex items-center justify-between">
+                                <span><i class="fa-solid fa-sliders text-rose-400 mr-1"></i> 1曲フィット時の拍数範囲</span>
+                                <span id="songFitRangeBadge" class="text-[10px] text-rose-500 font-mono">1拍 〜 16拍</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] font-bold text-stone-500 block mb-1">最小カット拍数</label>
+                                    <select id="minCutBeats" onchange="onSongFitRangeChange()" class="w-full bg-white border border-rose-200 rounded-lg px-2 py-1 text-xs text-stone-700 focus:outline-none focus:border-rose-400 shadow-sm">
+                                        <option value="1" selected>1拍 (約0.5秒)</option>
+                                        <option value="2">2拍 (約1秒)</option>
+                                        <option value="4">4拍 (約2秒)</option>
+                                        <option value="8">8拍 (約4秒)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-stone-500 block mb-1">最大カット拍数</label>
+                                    <select id="maxCutBeats" onchange="onSongFitRangeChange()" class="w-full bg-white border border-rose-200 rounded-lg px-2 py-1 text-xs text-stone-700 focus:outline-none focus:border-rose-400 shadow-sm">
+                                        <option value="2">2拍 (約1秒)</option>
+                                        <option value="4">4拍 (約2秒)</option>
+                                        <option value="8">8拍 (約4秒)</option>
+                                        <option value="16" selected>16拍 (約8秒)</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -496,6 +524,15 @@
 
         function setBpmBeat(beat) {
             selectedBeats = beat;
+            const songFitSettings = document.getElementById('songFitSettings');
+            if (songFitSettings) {
+                if (beat === 'song-fit') {
+                    songFitSettings.classList.remove('hidden');
+                } else {
+                    songFitSettings.classList.add('hidden');
+                }
+            }
+
             document.querySelectorAll('.bpm-beat-btn').forEach(btn => {
                 const isSelected = (beat === 'random' && btn.textContent.includes('ランダム')) ||
                                    (beat === 'song-fit' && btn.textContent.includes('1曲フィット')) ||
@@ -507,12 +544,35 @@
             updateBeatDuration();
         }
 
+        function onSongFitRangeChange() {
+            const minSelect = document.getElementById('minCutBeats');
+            const maxSelect = document.getElementById('maxCutBeats');
+            if (!minSelect || !maxSelect) return;
+
+            let minVal = parseInt(minSelect.value);
+            let maxVal = parseInt(maxSelect.value);
+
+            if (minVal > maxVal) {
+                maxSelect.value = minVal;
+                maxVal = minVal;
+            }
+
+            const badge = document.getElementById('songFitRangeBadge');
+            if (badge) {
+                badge.textContent = `${minVal}拍 〜 ${maxVal}拍`;
+            }
+
+            updateBeatDuration();
+        }
+
         function updateBeatDuration() {
             if (useBpmSync.checked && detectedBpm > 0) {
                 const secPerBeat = 60 / detectedBpm;
                 if (selectedBeats === 'song-fit') {
+                    const minVal = document.getElementById('minCutBeats')?.value || 1;
+                    const maxVal = document.getElementById('maxCutBeats')?.value || 16;
                     const totalBeats = bgmAudioBuffer ? Math.floor((bgmAudioBuffer.duration * detectedBpm) / 60) : 0;
-                    durationValue.textContent = `1曲フィット (全${totalBeats}拍 / 1〜16拍自動配分)`;
+                    durationValue.textContent = `1曲フィット (${minVal}〜${maxVal}拍 / 全${totalBeats}拍)`;
                 } else if (selectedBeats === 'random') {
                     durationValue.textContent = `ランダム (1/2/4/8拍可変 @ ${detectedBpm}BPM)`;
                 } else {
@@ -523,7 +583,6 @@
             }
         }
 
-        // Calculate clip durations and perform clip sampling/fitting for 1 full song
         function calculateSongFitSchedule() {
             if (uploadedClips.length === 0) return [];
 
@@ -535,19 +594,26 @@
                 }));
             }
 
+            const minBeatVal = parseInt(document.getElementById('minCutBeats')?.value || 1);
+            const maxBeatVal = parseInt(document.getElementById('maxCutBeats')?.value || 16);
+
             const secPerBeat = 60 / detectedBpm;
             const songDuration = bgmAudioBuffer.duration;
             const totalBeats = Math.floor((songDuration * detectedBpm) / 60);
 
+            const allBeatLevels = [1, 2, 4, 8, 16];
+            const beatLevels = allBeatLevels.filter(b => b >= minBeatVal && b <= maxBeatVal);
+            if (beatLevels.length === 0) beatLevels.push(minBeatVal);
+
+            const maxClipsCount = Math.floor(totalBeats / minBeatVal);
+
             let availableClips = [...uploadedClips];
-            
-            // Thin out clips if too many
-            if (availableClips.length > totalBeats) {
-                showToast(`動画が多いため、1曲（${totalBeats}拍）に収まるよう${availableClips.length - totalBeats}件間引きます`, 'info');
+
+            if (availableClips.length > maxClipsCount && maxClipsCount > 0) {
                 const sampled = [];
-                const step = availableClips.length / totalBeats;
-                for (let i = 0; i < totalBeats; i++) {
-                    const index = Math.floor(i * step);
+                const totalOriginal = availableClips.length;
+                for (let i = 0; i < maxClipsCount; i++) {
+                    const index = Math.min(totalOriginal - 1, Math.floor(i * (totalOriginal / maxClipsCount)));
                     sampled.push(availableClips[index]);
                 }
                 availableClips = sampled;
@@ -556,41 +622,26 @@
             const numClips = availableClips.length;
             if (numClips === 0) return [];
 
-            // Balanced Beat Allocation Algorithm across the whole song
-            // Allowed beat options: [1, 2, 4, 8, 16]
-            const beatLevels = [1, 2, 4, 8, 16];
-            let assignedBeats = new Array(numClips).fill(4); // Start all at 4 beats
-            let currentSum = numClips * 4;
+            let assignedBeats = new Array(numClips).fill(beatLevels[0]);
+            let currentSum = numClips * beatLevels[0];
 
             let attempts = 0;
-            while (currentSum !== totalBeats && attempts < 2000) {
+            while (currentSum < totalBeats && attempts < 3000) {
                 attempts++;
                 const idx = Math.floor(Math.random() * numClips);
                 const current = assignedBeats[idx];
                 const currentLevelIdx = beatLevels.indexOf(current);
 
-                if (currentSum < totalBeats) {
-                    if (currentLevelIdx < beatLevels.length - 1) {
-                        const nextVal = beatLevels[currentLevelIdx + 1];
-                        const diff = nextVal - current;
-                        if (currentSum + diff <= totalBeats) {
-                            assignedBeats[idx] = nextVal;
-                            currentSum += diff;
-                        }
-                    }
-                } else if (currentSum > totalBeats) {
-                    if (currentLevelIdx > 0) {
-                        const nextVal = beatLevels[currentLevelIdx - 1];
-                        const diff = current - nextVal;
-                        if (currentSum - diff >= totalBeats) {
-                            assignedBeats[idx] = nextVal;
-                            currentSum -= diff;
-                        }
+                if (currentLevelIdx < beatLevels.length - 1) {
+                    const nextVal = beatLevels[currentLevelIdx + 1];
+                    const diff = nextVal - current;
+                    if (currentSum + diff <= totalBeats) {
+                        assignedBeats[idx] = nextVal;
+                        currentSum += diff;
                     }
                 }
             }
 
-            // Build schedule with calculated beats
             const schedule = [];
             for (let i = 0; i < numClips; i++) {
                 const clip = availableClips[i];
