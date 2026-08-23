@@ -601,43 +601,92 @@
             const songDuration = bgmAudioBuffer.duration;
             const totalBeats = Math.floor((songDuration * detectedBpm) / 60);
 
+            if (totalBeats <= 0) return [];
+
             const allBeatLevels = [1, 2, 4, 8, 16];
             const beatLevels = allBeatLevels.filter(b => b >= minBeatVal && b <= maxBeatVal);
             if (beatLevels.length === 0) beatLevels.push(minBeatVal);
 
-            const maxClipsCount = Math.floor(totalBeats / minBeatVal);
+            // 平均拍数から全体の必要クリップ数を試算
+            const avgBeat = (beatLevels[0] + beatLevels[beatLevels.length - 1]) / 2;
+            let targetNumClips = Math.max(1, Math.round(totalBeats / avgBeat));
 
             let availableClips = [...uploadedClips];
 
-            if (availableClips.length > maxClipsCount && maxClipsCount > 0) {
+            // アップロード動画のタイムライン全体から均等に抽出
+            if (availableClips.length > targetNumClips) {
                 const sampled = [];
                 const totalOriginal = availableClips.length;
-                for (let i = 0; i < maxClipsCount; i++) {
-                    const index = Math.min(totalOriginal - 1, Math.floor(i * (totalOriginal / maxClipsCount)));
+                for (let i = 0; i < targetNumClips; i++) {
+                    const index = Math.min(totalOriginal - 1, Math.floor(i * (totalOriginal / targetNumClips)));
                     sampled.push(availableClips[index]);
                 }
                 availableClips = sampled;
             }
 
-            const numClips = availableClips.length;
+            let numClips = availableClips.length;
             if (numClips === 0) return [];
 
-            let assignedBeats = new Array(numClips).fill(beatLevels[0]);
-            let currentSum = numClips * beatLevels[0];
+            // 各クリップへ最小〜最大範囲の拍数をランダムに初期割り当て
+            let assignedBeats = availableClips.map(() => {
+                return beatLevels[Math.floor(Math.random() * beatLevels.length)];
+            });
 
-            let attempts = 0;
-            while (currentSum < totalBeats && attempts < 3000) {
-                attempts++;
-                const idx = Math.floor(Math.random() * numClips);
-                const current = assignedBeats[idx];
-                const currentLevelIdx = beatLevels.indexOf(current);
+            let currentSum = assignedBeats.reduce((a, b) => a + b, 0);
 
-                if (currentLevelIdx < beatLevels.length - 1) {
-                    const nextVal = beatLevels[currentLevelIdx + 1];
-                    const diff = nextVal - current;
-                    if (currentSum + diff <= totalBeats) {
-                        assignedBeats[idx] = nextVal;
-                        currentSum += diff;
+            // 全体の合計拍数が曲の総拍数（totalBeats）にピッタリ収まるよう調整
+            let iterations = 0;
+            while (currentSum !== totalBeats && iterations < 2000) {
+                iterations++;
+                if (currentSum < totalBeats) {
+                    const upgradableIndices = [];
+                    for (let i = 0; i < numClips; i++) {
+                        const currentLevelIdx = beatLevels.indexOf(assignedBeats[i]);
+                        if (currentLevelIdx < beatLevels.length - 1) {
+                            const diff = beatLevels[currentLevelIdx + 1] - assignedBeats[i];
+                            if (currentSum + diff <= totalBeats) {
+                                upgradableIndices.push(i);
+                            }
+                        }
+                    }
+
+                    if (upgradableIndices.length > 0) {
+                        const randIdx = upgradableIndices[Math.floor(Math.random() * upgradableIndices.length)];
+                        const currentLevelIdx = beatLevels.indexOf(assignedBeats[randIdx]);
+                        const nextVal = beatLevels[currentLevelIdx + 1];
+                        currentSum += (nextVal - assignedBeats[randIdx]);
+                        assignedBeats[randIdx] = nextVal;
+                    } else {
+                        const gap = totalBeats - currentSum;
+                        const validLevels = beatLevels.filter(b => b <= gap);
+                        if (validLevels.length > 0) {
+                            const chosenBeat = validLevels[Math.floor(Math.random() * validLevels.length)];
+                            const nextClipIndex = numClips % uploadedClips.length;
+                            availableClips.push(uploadedClips[nextClipIndex]);
+                            assignedBeats.push(chosenBeat);
+                            currentSum += chosenBeat;
+                            numClips++;
+                        } else {
+                            break;
+                        }
+                    }
+                } else if (currentSum > totalBeats) {
+                    const downgradableIndices = [];
+                    for (let i = 0; i < numClips; i++) {
+                        const currentLevelIdx = beatLevels.indexOf(assignedBeats[i]);
+                        if (currentLevelIdx > 0) {
+                            downgradableIndices.push(i);
+                        }
+                    }
+
+                    if (downgradableIndices.length > 0) {
+                        const randIdx = downgradableIndices[Math.floor(Math.random() * downgradableIndices.length)];
+                        const currentLevelIdx = beatLevels.indexOf(assignedBeats[randIdx]);
+                        const prevVal = beatLevels[currentLevelIdx - 1];
+                        currentSum -= (assignedBeats[randIdx] - prevVal);
+                        assignedBeats[randIdx] = prevVal;
+                    } else {
+                        break;
                     }
                 }
             }
